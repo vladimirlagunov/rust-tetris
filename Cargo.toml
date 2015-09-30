@@ -1,0 +1,12 @@
+# -*- conf -*-
+[package]
+name = "tetris"
+version = "0.1.0"
+authors = ["Vladimir Lagunov <lagunov.vladimir@gmail.com>"]
+build = "build.rs"
+
+
+[dependencies]
+sdl2 = "*"
+sdl2-sys = "*"
+rand = "*"
