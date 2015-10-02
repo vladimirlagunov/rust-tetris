@@ -19,15 +19,29 @@ use sdl2_sys::event::SDL_USEREVENT;
 use rand::random;
 
 
-// struct Tetris<F: Figure + Sized> {
-//     lines: Vec<Vec<Option<TetrisCellColor>>>,
-//     current_figure: Option<(Point, F)>
-// }
+const CELL_COUNT_X: usize = 9;
+const CELL_COUNT_Y: usize = 16;
 
 
 #[derive(Clone, Copy, Debug)]
 enum TetrisCellColor {
     Red, Orange, Yellow, Green, Blue, DeepBlue, Purple,
+}
+
+
+impl rand::Rand for TetrisCellColor {
+    fn rand<R: rand::Rng>(rng: &mut R) -> Self {
+        match rng.next_u32() % 7 {
+            0 => TetrisCellColor::Red,
+            1 => TetrisCellColor::Orange,
+            2 => TetrisCellColor::Yellow,
+            3 => TetrisCellColor::Green,
+            4 => TetrisCellColor::Blue,
+            5 => TetrisCellColor::DeepBlue,
+            6 => TetrisCellColor::Purple,
+            _ => panic!("lolwut"),
+        }
+    }
 }
 
 
@@ -50,28 +64,22 @@ impl TetrisCellColor {
 struct Point(usize, usize);
 
 #[derive(PartialEq, Clone, Copy, Debug)]
-struct PointOffset(usize, usize);
+struct Dimensions(usize, usize);
 
+#[derive(PartialEq, Clone, Copy, Debug)]
+struct PointOffset(isize, isize);
 
-trait Figure {
-    fn new_by_top_left_corner(Point, TetrisCellColor) -> Figure;
-    fn rotate_clockwise(self) -> (PointOffset, Figure);
-    fn rotate_counterclockwise(self) -> (PointOffset, Figure);
-    fn lower_edge<'a>(&'a self) -> &'a [usize];
-    fn dimensions(&self) -> PointOffset;
-    fn color(&self) -> TetrisCellColor;
-}
 
 
 trait CellScreen {
     fn reset(&mut self);
     fn set_cell(&mut self, Point, Option<TetrisCellColor>);
-    fn dimensions(&self) -> PointOffset;
-    fn layers<'a>(&'a self) -> Vec<(Point, PointOffset, &'a [Option<TetrisCellColor>])>;
-    fn cell_size(&self) -> PointOffset;
-    fn cell_spacing(&self) -> PointOffset;
-    fn window_size(&self) -> PointOffset;
-    fn global_offset(&self) -> PointOffset;
+    fn dimensions(&self) -> Dimensions;
+    fn layers<'a>(&'a self) -> Vec<(Point, Dimensions, &'a [Option<TetrisCellColor>])>;
+    fn cell_size(&self) -> Dimensions;
+    fn cell_spacing(&self) -> Dimensions;
+    fn window_size(&self) -> Dimensions;
+    fn global_offset(&self) -> Dimensions;
 }
 
 
@@ -82,9 +90,9 @@ trait CellScreenRenderer {
 
 impl <C: CellScreen> CellScreenRenderer for C {
     fn render_cell_screen(&self, renderer: &mut Renderer) {
-        let PointOffset(x_glob_offset, y_glob_offset) = self.global_offset();
+        let Dimensions(x_glob_offset, y_glob_offset) = self.global_offset();
 
-        let PointOffset(x_max, y_max) = self.dimensions();
+        let Dimensions(x_max, y_max) = self.dimensions();
         let mut cells: Vec<Option<TetrisCellColor>> = Vec::with_capacity(x_max * y_max);
 
         let cell_size = self.cell_size();
@@ -108,7 +116,7 @@ impl <C: CellScreen> CellScreenRenderer for C {
 
         for layer_params in self.layers() {
             let (Point(layer_x0, layer_y0),
-                 PointOffset(layer_width, layer_height),
+                 Dimensions(layer_width, layer_height),
                  layer_cells
                  ) = layer_params;
 
@@ -118,10 +126,7 @@ impl <C: CellScreen> CellScreenRenderer for C {
             let mut layer_cell_iter = layer_cells.iter();
             for y in layer_y0 .. layer_y0 + layer_height {
                 for x in layer_x0 .. layer_x0 + layer_width {
-                    cells[y * layer_width + x] = layer_cell_iter.next().unwrap().clone();
-                    // println!("Updated (x={}, y={}), {} of {}, value={:?}",
-                    //          x, y, y * layer_width + x, cells.len(),
-                    //          cells[y * layer_width + x]);
+                    cells[y * x_max + x] = layer_cell_iter.next().unwrap().clone();
                 }
             }
         }
@@ -150,16 +155,16 @@ impl <C: CellScreen> CellScreenRenderer for C {
 
 
 struct SimpleCellScreen {
-    cells: [Option<TetrisCellColor>; 16 * 12],
-    dim: PointOffset,
+    cells: [Option<TetrisCellColor>; CELL_COUNT_X * CELL_COUNT_Y],
+    dim: Dimensions,
 }
 
 
 impl SimpleCellScreen {
     fn new() -> Self {
         SimpleCellScreen {
-            cells: [None; 16 * 12],
-            dim: PointOffset(16, 12),
+            cells: [None; CELL_COUNT_X * CELL_COUNT_Y],
+            dim: Dimensions(CELL_COUNT_X, CELL_COUNT_Y),
         }
     }
 }
@@ -175,13 +180,13 @@ impl CellScreen for SimpleCellScreen {
     fn set_cell(&mut self, point: Point, cell: Option<TetrisCellColor>) {
         let dim = self.dimensions();
         self.cells[point.1 * dim.0 + point.0] = cell;
-    }    
+    }
 
-    fn dimensions(&self) -> PointOffset {
+    fn dimensions(&self) -> Dimensions {
         self.dim.clone()
     }
 
-    fn layers<'a>(&'a self) -> Vec<(Point, PointOffset, &'a [Option<TetrisCellColor>])> {
+    fn layers<'a>(&'a self) -> Vec<(Point, Dimensions, &'a [Option<TetrisCellColor>])> {
         vec![(
             Point(0, 0),
             self.dim.clone(),
@@ -189,23 +194,23 @@ impl CellScreen for SimpleCellScreen {
             )]
     }
 
-    fn cell_size(&self) -> PointOffset {
-        PointOffset(50, 50)
+    fn cell_size(&self) -> Dimensions {
+        Dimensions(40, 40)
     }
 
-    fn cell_spacing(&self) -> PointOffset {
-        PointOffset(2, 2)
+    fn cell_spacing(&self) -> Dimensions {
+        Dimensions(2, 2)
     }
 
-    fn global_offset(&self) -> PointOffset {
-        PointOffset(10, 10)
+    fn global_offset(&self) -> Dimensions {
+        Dimensions(10, 10)
     }
 
-    fn window_size(&self) -> PointOffset {
+    fn window_size(&self) -> Dimensions {
         let off = self.global_offset();
         let cs = self.cell_size();
         let dim = self.dimensions();
-        PointOffset(
+        Dimensions(
             (off.0 * 2 + cs.0 * dim.0) as usize,
             (off.1 * 2 + cs.1 * dim.1) as usize,
             )
@@ -263,7 +268,7 @@ fn timer_event() -> Event {
         window_id: 0,
         timestamp: 0,
         type_: SDL_USEREVENT,
-    }    
+    }
 }
 
 
@@ -343,11 +348,236 @@ impl RandomSquaresGame {
 }
 
 
+struct TetrisCellScreen {
+    cells: [Option<TetrisCellColor>; CELL_COUNT_X * CELL_COUNT_Y],
+    dim: Dimensions,
+    _figure: Option<(Point, TetrisCellColor, Figure)>,
+    _figure_layer: Vec<Option<TetrisCellColor>>,
+}
+
+
+impl TetrisCellScreen {
+    fn new() -> Self {
+        TetrisCellScreen {
+            cells: [None; CELL_COUNT_X * CELL_COUNT_Y],
+            dim: Dimensions(CELL_COUNT_X, CELL_COUNT_Y),
+            _figure: None,
+            _figure_layer: Vec::new(),
+        }
+    }
+
+    fn get_figure(&self) -> Option<(Point, TetrisCellColor, Figure)> {
+        self._figure.clone()
+    }
+
+    fn set_figure(&mut self, point: Point, color: TetrisCellColor, figure: Figure) {
+        match &self._figure {
+            &Some((_, _, ref old_figure)) if old_figure != &figure => {},
+            _ => {
+                let bitmap = figure.bitmap();
+                self._figure_layer.reserve(bitmap.len());
+                self._figure_layer.truncate(bitmap.len());
+                for flag in bitmap.iter() {
+                    self._figure_layer.push(
+                        if *flag { Some(color) } else { None });
+                }
+            },
+        };
+
+        self._figure = Some((point, color, figure));
+    }
+}
+
+
+impl CellScreen for TetrisCellScreen {
+    fn reset(&mut self) {
+        for cell in self.cells.iter_mut() {
+            *cell = None;
+        }
+        self._figure = None;
+    }
+
+    fn set_cell(&mut self, point: Point, cell: Option<TetrisCellColor>) {
+        let dim = self.dimensions();
+        self.cells[point.1 * dim.0 + point.0] = cell;
+    }
+
+    fn dimensions(&self) -> Dimensions {
+        self.dim.clone()
+    }
+
+    fn layers<'a>(&'a self) -> Vec<(Point, Dimensions, &'a [Option<TetrisCellColor>])> {
+        let mut layers = Vec::with_capacity(2);
+        layers.push((
+            Point(0, 0),
+            self.dim.clone(),
+            self.cells.as_ref()));
+        if let Some((ref point, _, ref figure)) = self.get_figure() {
+            layers.push((
+                point.clone(),
+                figure.dimensions(),
+                &self._figure_layer));
+        }
+        layers
+    }
+
+    fn cell_size(&self) -> Dimensions {
+        Dimensions(40, 40)
+    }
+
+    fn cell_spacing(&self) -> Dimensions {
+        Dimensions(2, 2)
+    }
+
+    fn global_offset(&self) -> Dimensions {
+        Dimensions(10, 10)
+    }
+
+    fn window_size(&self) -> Dimensions {
+        let off = self.global_offset();
+        let cs = self.cell_size();
+        let dim = self.dimensions();
+        Dimensions(
+            (off.0 * 2 + cs.0 * dim.0) as usize,
+            (off.1 * 2 + cs.1 * dim.1) as usize,
+            )
+    }
+}
+
+
+struct TetrisGame {
+    cell_screen: TetrisCellScreen,
+    dim: Dimensions,
+    main_layer: [Option<TetrisCellColor>; CELL_COUNT_X * CELL_COUNT_Y],
+    video: sdl2::VideoSubsystem,
+    timer: sdl2::TimerSubsystem,
+    event: sdl2::EventSubsystem,
+}
+
+
+impl Game for TetrisGame {
+    fn new(sdl: &sdl2::Sdl) -> Self {
+        TetrisGame {
+            cell_screen: TetrisCellScreen::new(),
+            dim: Dimensions(CELL_COUNT_X, CELL_COUNT_Y),
+            main_layer: [None; CELL_COUNT_X * CELL_COUNT_Y],
+            video: sdl.video().unwrap(),
+            timer: sdl.timer().unwrap(),
+            event: sdl.event().unwrap(),
+        }
+    }
+
+    fn run(&mut self, event_pump: &mut sdl2::EventPump, renderer: &mut Renderer) {
+        let event = self.event.clone();
+        let timer = self.timer.clone();
+        let timer = timer.add_timer(0, Box::new(move || {
+            event.push_event(timer_event()).unwrap();
+            1000
+        }));
+
+        'game: loop {
+            for event in event_pump.poll_iter() {
+                match event {
+                    Event::Quit {..} => break 'game,
+                    Event::KeyDown {keycode: Some(Keycode::Q), ..} => break 'game,
+                    Event::KeyDown {keycode: Some(Keycode::Escape), ..} => break 'game,
+                    event => match GameInputEvent::from_sdl_event(&event) {
+                        Some(event) => if !self.handle_event(event, renderer) { break 'game },
+                        None => {},
+                    },
+                }
+            }
+        }
+    }
+
+    fn window_size(&self) -> (u32, u32) {
+        let ws = self.cell_screen.window_size();
+        (ws.0 as u32, ws.1 as u32)
+    }
+}
+
+
+impl TetrisGame {
+    fn handle_event(&mut self, event: GameInputEvent, renderer: &mut Renderer) -> bool {
+        match event {
+            GameInputEvent::Timer => {
+                let (point, color, figure) = match self.cell_screen.get_figure() {
+                    None => {
+                        let figure = rand::random::<Figure>();
+                        let offset = figure.offset_from_top_center();
+                        let dim = self.cell_screen.dimensions();
+                        let point = Point(
+                            (dim.0 as isize / 2 + offset.0) as usize,
+                            offset.1 as usize,
+                            );
+
+                        (point, rand::random(), figure)
+                    },
+                    Some((old_point, color, figure)) => {
+                        (Point(old_point.0, old_point.1 + 1), color, figure)
+                    },
+                };
+                self.cell_screen.set_figure(point, color, figure);
+            },
+            _ => {},
+        }
+
+        self.cell_screen.render_cell_screen(renderer);
+        renderer.present();
+
+        true
+    }
+}
+
+
+#[derive(Clone, PartialEq, Debug)]
+enum Figure {
+    Cube,
+}
+
+
+const CUBE_CELLS: &'static [bool] = &[
+    true, true,
+    true, true,
+    ];
+
+
+impl Figure {
+    fn offset_from_top_center(&self) -> PointOffset {
+        match self {
+            &Figure::Cube => PointOffset(-1, 1),
+        }
+    }
+
+    fn dimensions(&self) -> Dimensions {
+        match self {
+            &Figure::Cube => Dimensions(2, 2),
+        }
+    }
+
+    fn bitmap(&self) -> &'static [bool] {
+        match self {
+            &Figure::Cube => CUBE_CELLS,
+        }
+    }
+}
+
+
+impl rand::Rand for Figure {
+    fn rand<R: rand::Rng>(rng: &mut R) -> Self {
+        match rng.next_u32() % 1 {
+            0 => Figure::Cube,
+            _ => panic!("lolwut"),
+        }
+    }
+}
+
+
 fn main() {
     let sdl_context = sdl2::init().unwrap();
     let event_subsystem = sdl_context.event().unwrap();
 
-    let mut game = RandomSquaresGame::new(&sdl_context);
+    let mut game = TetrisGame::new(&sdl_context);
     let window_size = game.window_size();
 
     let window = sdl_context.video().unwrap().window("Tetris", window_size.0, window_size.1).build().unwrap();
