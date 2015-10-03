@@ -19,7 +19,7 @@ use sdl2_sys::event::SDL_USEREVENT;
 use rand::random;
 
 
-const CELL_COUNT_X: usize = 9;
+const CELL_COUNT_X: usize = 10;
 const CELL_COUNT_Y: usize = 16;
 
 
@@ -366,6 +366,10 @@ impl TetrisCellScreen {
         }
     }
 
+    fn has_figure(&self) -> bool {
+        ! self._figure.is_none()
+    }
+
     fn get_figure(&self) -> Option<(Point, TetrisCellColor, Figure)> {
         self._figure.clone()
     }
@@ -519,6 +523,12 @@ impl TetrisGame {
                 };
                 self.cell_screen.set_figure(point, color, figure);
             },
+            GameInputEvent::MoveLeft => if self.cell_screen.has_figure() {
+                self.move_figure_left();
+            },
+            GameInputEvent::MoveRight => if self.cell_screen.has_figure() {
+                self.move_figure_right();
+            },
             _ => {},
         }
 
@@ -526,6 +536,22 @@ impl TetrisGame {
         renderer.present();
 
         true
+    }
+
+    fn move_figure_left(&mut self) {
+        let (mut point, color, figure) = self.cell_screen.get_figure().unwrap();
+        if (point.0 > 0) {
+            point.0 -= 1;
+            self.cell_screen.set_figure(point, color, figure);
+        }
+    }
+
+    fn move_figure_right(&mut self) {
+        let (mut point, color, figure) = self.cell_screen.get_figure().unwrap();
+        if (point.0 < self.cell_screen.dimensions().0 - figure.dimensions().0) {
+            point.0 += 1;
+            self.cell_screen.set_figure(point, color, figure);
+        }
     }
 }
 
@@ -545,7 +571,7 @@ const CUBE_CELLS: &'static [bool] = &[
 impl Figure {
     fn offset_from_top_center(&self) -> PointOffset {
         match self {
-            &Figure::Cube => PointOffset(-1, 1),
+            &Figure::Cube => PointOffset(-1, 0),
         }
     }
 
