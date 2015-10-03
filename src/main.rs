@@ -531,6 +531,16 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             GameInputEvent::Timer => {
                 let (point, color, figure) = self.cell_screen.get_figure().unwrap();
                 if (point.1 + figure.dimensions().1 == self.cell_screen.dimensions().1) {
+                    let fig_dim = figure.dimensions();
+                    let mut new_cells = self.cell_screen._figure_layer.clone().into_iter();
+                    for y in point.1 .. point.1 + fig_dim.1 {
+                        for x in point.0 .. point.0 + fig_dim.0 {
+                            self.cell_screen.set_cell(
+                                Point(x, y),
+                                new_cells.next().unwrap().clone());
+                        }
+                    }
+
                     if ! self.create_new_figure() {
                         return false;
                     }
