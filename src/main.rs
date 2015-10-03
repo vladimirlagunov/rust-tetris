@@ -30,22 +30,6 @@ enum TetrisCellColor {
 }
 
 
-impl rand::Rand for TetrisCellColor {
-    fn rand<R: rand::Rng>(rng: &mut R) -> Self {
-        match rng.next_u32() % 7 {
-            0 => TetrisCellColor::Red,
-            1 => TetrisCellColor::Orange,
-            2 => TetrisCellColor::Yellow,
-            3 => TetrisCellColor::Green,
-            4 => TetrisCellColor::Blue,
-            5 => TetrisCellColor::DeepBlue,
-            6 => TetrisCellColor::Purple,
-            _ => panic!("lolwut"),
-        }
-    }
-}
-
-
 impl TetrisCellColor {
     fn get_sdl_color(&self) -> Color {
         match self {
@@ -522,7 +506,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             offset.1 as usize,
             );
 
-        self.cell_screen.set_figure(point, self.rng.gen(), figure);
+        self.cell_screen.set_figure(point, figure.color(), figure);
         true
     }
 
@@ -584,6 +568,27 @@ impl <Random: rand::Rng> TetrisGame<Random> {
 #[derive(Clone, PartialEq, Debug)]
 enum Figure {
     Cube,
+    LineHorisontal,
+    LineVertical,
+
+    LeftFrame0,
+    LeftFrame90,
+    LeftFrame180,
+    LeftFrame270,
+    RightFrame0,
+    RightFrame90,
+    RightFrame180,
+    RightFrame270,
+
+    LeftZigzagHorizontal,
+    LeftZigzagVertical,
+    RightZigzagHorizontal,
+    RightZigzagVertical,
+
+    Pyramid0,
+    Pyramid90,
+    Pyramid180,
+    Pyramid270,
 }
 
 
@@ -592,23 +597,208 @@ const CUBE_CELLS: &'static [bool] = &[
     true, true,
     ];
 
+const LINE_HORISONTAL: &'static [bool] = &[
+    true, true, true, true
+    ];
+
+const LINE_VERTICAL: &'static [bool] = LINE_HORISONTAL;
+
+const LEFT_FRAME_0: &'static [bool] = &[
+    true,  true,
+    false, true,
+    false, true,
+    ];
+
+const LEFT_FRAME_90: &'static [bool] = &[
+    false, false, true,
+    true,  true,  true,
+    ];
+
+const LEFT_FRAME_180: &'static [bool] = &[
+    true,  false,
+    true,  false,
+    true,  true,
+    ];
+
+const LEFT_FRAME_270: &'static [bool] = &[
+    true,  true,  true,
+    true,  false, false,
+    ];
+
+const RIGHT_FRAME_0: &'static [bool] = &[
+    true, true, 
+    true, false,
+    true, false,
+    ];
+
+const RIGHT_FRAME_90: &'static [bool] = &[
+    true,  true,  true,
+    false, false, true,
+    ];
+
+const RIGHT_FRAME_180: &'static [bool] = &[
+    false, true,
+    false, true,
+    true,  true,
+    ];
+
+const RIGHT_FRAME_270: &'static [bool] = &[
+    true,  false, false,
+    true,  true,  true,
+    ];
+
+const LEFT_ZIGZAG_HORIZONTAL: &'static [bool] = &[
+    false, true, true,
+    true,  true, false,
+    ];
+
+const LEFT_ZIGZAG_VERTICAL: &'static [bool] = &[
+    true,  false,
+    true,  true,
+    false, true,
+    ];
+
+const RIGHT_ZIGZAG_HORIZONTAL: &'static [bool] = &[
+    true,  true, false,
+    false, true, true,
+    ];
+
+const RIGHT_ZIGZAG_VERTICAL: &'static [bool] = &[
+    false, true,
+    true,  true,
+    true,  false,
+    ];
+
+const PYRAMID_0: &'static [bool] = &[
+    false, true,  false,
+    true,  true,  true,
+    ];
+
+const PYRAMID_90: &'static [bool] = &[
+    true,  false,
+    true,  true,
+    true,  false,
+    ];
+
+const PYRAMID_180: &'static [bool] = &[
+    true,  true,  true,
+    false, true,  false,
+    ];
+
+const PYRAMID_270: &'static [bool] = &[
+    false, true,
+    true,  true,
+    false, true,
+    ];
+
 
 impl Figure {
     fn offset_from_top_center(&self) -> PointOffset {
         match self {
             &Figure::Cube => PointOffset(-1, 0),
+            &Figure::LineHorisontal => PointOffset(-2, 0),
+            &Figure::LineVertical => PointOffset(0, 0),
+
+            &Figure::LeftFrame0 => PointOffset(-1, 0),
+            &Figure::LeftFrame90 => PointOffset(-2, 0),
+            &Figure::LeftFrame180 => PointOffset(-1, 0),
+            &Figure::LeftFrame270 => PointOffset(-2, 0),
+
+            &Figure::RightFrame0 => PointOffset(-1, 0),
+            &Figure::RightFrame90 => PointOffset(-2, 0),
+            &Figure::RightFrame180 => PointOffset(-1, 0),
+            &Figure::RightFrame270 => PointOffset(-2, 0),
+
+            &Figure::LeftZigzagHorizontal => PointOffset(-1, 0),
+            &Figure::LeftZigzagVertical => PointOffset(-1, 0),
+            &Figure::RightZigzagHorizontal => PointOffset(-1, 0),
+            &Figure::RightZigzagVertical => PointOffset(-1, 0),
+
+            &Figure::Pyramid0 => PointOffset(-1, 0),
+            &Figure::Pyramid90 => PointOffset(-1, 0),
+            &Figure::Pyramid180 => PointOffset(-1, 0),
+            &Figure::Pyramid270 => PointOffset(-1, 0),
         }
     }
 
     fn dimensions(&self) -> Dimensions {
         match self {
             &Figure::Cube => Dimensions(2, 2),
+            &Figure::LineHorisontal => Dimensions(4, 1),
+            &Figure::LineVertical => Dimensions(1, 4),
+
+            &Figure::LeftFrame0 => Dimensions(2, 3),
+            &Figure::LeftFrame90 => Dimensions(3, 2),
+            &Figure::LeftFrame180 => Dimensions(2, 3),
+            &Figure::LeftFrame270 => Dimensions(3, 2),
+            &Figure::RightFrame0 => Dimensions(2, 3),
+            &Figure::RightFrame90 => Dimensions(3, 2),
+            &Figure::RightFrame180 => Dimensions(2, 3),
+            &Figure::RightFrame270 => Dimensions(3, 2),
+
+            &Figure::LeftZigzagHorizontal => Dimensions(2, 3),
+            &Figure::LeftZigzagVertical => Dimensions(3, 2),
+            &Figure::RightZigzagHorizontal => Dimensions(2, 3),
+            &Figure::RightZigzagVertical => Dimensions(3, 2),
+
+            &Figure::Pyramid0 => Dimensions(3, 2),
+            &Figure::Pyramid90 => Dimensions(2, 3),
+            &Figure::Pyramid180 => Dimensions(3, 2),
+            &Figure::Pyramid270 => Dimensions(2, 3),
+        }
+    }
+
+    fn color(&self) -> TetrisCellColor {
+        match self {
+            &Figure::Cube => TetrisCellColor::Red,
+            &Figure::LineHorisontal => TetrisCellColor::Orange,
+            &Figure::LineVertical => TetrisCellColor::Orange,
+
+            &Figure::LeftFrame0 => TetrisCellColor::Yellow,
+            &Figure::LeftFrame90 => TetrisCellColor::Yellow,
+            &Figure::LeftFrame180 => TetrisCellColor::Yellow,
+            &Figure::LeftFrame270 => TetrisCellColor::Yellow,
+            &Figure::RightFrame0 => TetrisCellColor::Green,
+            &Figure::RightFrame90 => TetrisCellColor::Green,
+            &Figure::RightFrame180 => TetrisCellColor::Green,
+            &Figure::RightFrame270 => TetrisCellColor::Green,
+
+            &Figure::LeftZigzagHorizontal => TetrisCellColor::Blue,
+            &Figure::LeftZigzagVertical => TetrisCellColor::Blue,
+            &Figure::RightZigzagHorizontal => TetrisCellColor::DeepBlue,
+            &Figure::RightZigzagVertical => TetrisCellColor::DeepBlue,
+
+            &Figure::Pyramid0 => TetrisCellColor::Purple,
+            &Figure::Pyramid90 => TetrisCellColor::Purple,
+            &Figure::Pyramid180 => TetrisCellColor::Purple,
+            &Figure::Pyramid270 => TetrisCellColor::Purple,
         }
     }
 
     fn bitmap(&self) -> &'static [bool] {
         match self {
             &Figure::Cube => CUBE_CELLS,
+            &Figure::LineHorisontal => LINE_HORISONTAL,
+            &Figure::LineVertical => LINE_VERTICAL,
+
+            &Figure::LeftFrame0 => LEFT_FRAME_0,
+            &Figure::LeftFrame90 => LEFT_FRAME_90,
+            &Figure::LeftFrame180 => LEFT_FRAME_180,
+            &Figure::LeftFrame270 => LEFT_FRAME_270,
+            &Figure::RightFrame0 => RIGHT_FRAME_0,
+            &Figure::RightFrame90 => RIGHT_FRAME_90,
+            &Figure::RightFrame180 => RIGHT_FRAME_180,
+            &Figure::RightFrame270 => RIGHT_FRAME_270,
+
+            &Figure::LeftZigzagHorizontal => LEFT_ZIGZAG_HORIZONTAL,
+            &Figure::LeftZigzagVertical => LEFT_ZIGZAG_VERTICAL,
+            &Figure::RightZigzagHorizontal => RIGHT_ZIGZAG_HORIZONTAL,
+            &Figure::RightZigzagVertical => RIGHT_ZIGZAG_VERTICAL,
+
+            &Figure::Pyramid0 => PYRAMID_0,
+            &Figure::Pyramid90 => PYRAMID_90,
+            &Figure::Pyramid180 => PYRAMID_180,
+            &Figure::Pyramid270 => PYRAMID_270,
         }
     }
 }
@@ -616,8 +806,30 @@ impl Figure {
 
 impl rand::Rand for Figure {
     fn rand<R: rand::Rng>(rng: &mut R) -> Self {
-        match rng.next_u32() % 1 {
+        match rng.next_u32() % 14 {
             0 => Figure::Cube,
+            1 => Figure::LineHorisontal,
+            2 => Figure::LineVertical,
+
+            3 => Figure::LeftFrame0,
+            4 => Figure::LeftFrame90,
+            5 => Figure::LeftFrame180,
+            6 => Figure::LeftFrame270,
+            7 => Figure::RightFrame0,
+            8 => Figure::RightFrame90,
+            9 => Figure::RightFrame180,
+            10 => Figure::RightFrame270,
+
+            11 => Figure::LeftZigzagHorizontal,
+            12 => Figure::LeftZigzagVertical,
+            13 => Figure::RightZigzagHorizontal,
+            14 => Figure::RightZigzagVertical,
+
+            15 => Figure::Pyramid0,
+            16 => Figure::Pyramid90,
+            17 => Figure::Pyramid180,
+            18 => Figure::Pyramid270,
+
             _ => panic!("lolwut"),
         }
     }
@@ -629,7 +841,7 @@ fn main() {
     let event_subsystem = sdl_context.event().unwrap();
 
     // let mut game = RandomSquaresGame::new(&sdl_context);
-    let mut game = TetrisGame::new(&sdl_context, rand::weak_rng());
+    let mut game = TetrisGame::new(&sdl_context, rand::thread_rng());
     let window_size = game.window_size();
 
     let window = sdl_context.video().unwrap().window("Tetris", window_size.0, window_size.1).build().unwrap();
