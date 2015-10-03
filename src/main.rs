@@ -21,9 +21,10 @@ use rand::random;
 
 const CELL_COUNT_X: usize = 10;
 const CELL_COUNT_Y: usize = 16;
+const PERIOD_MS: u32 = 200;
 
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum TetrisCellColor {
     Red, Orange, Yellow, Green, Blue, DeepBlue, Purple,
 }
@@ -247,7 +248,6 @@ impl GameInputEvent {
 
 
 trait Game {
-    fn new(&sdl2::Sdl) -> Self;
     fn run(&mut self, &mut sdl2::EventPump, &mut Renderer);
     fn window_size(&self) -> (u32, u32);
 }
@@ -278,16 +278,6 @@ fn is_timer_event(event: &Event) -> bool {
 
 
 impl Game for RandomSquaresGame {
-    fn new(sdl: &sdl2::Sdl) -> Self {
-        RandomSquaresGame {
-            cell_screen: SimpleCellScreen::new(),
-            counter: 0,
-            video: sdl.video().unwrap(),
-            timer: sdl.timer().unwrap(),
-            event: sdl.event().unwrap(),
-        }
-    }
-
     fn window_size(&self) -> (u32, u32) {
         let ws = self.cell_screen.window_size();
         (ws.0 as u32, ws.1 as u32)
@@ -296,9 +286,9 @@ impl Game for RandomSquaresGame {
     fn run(&mut self, event_pump: &mut sdl2::EventPump, renderer: &mut Renderer) {
         let event = self.event.clone();
         let timer = self.timer.clone();
-        let timer = timer.add_timer(0, Box::new(move || {
+        let timer = timer.add_timer(PERIOD_MS, Box::new(move || {
             event.push_event(timer_event()).unwrap();
-            500
+            PERIOD_MS
         }));
 
         'game: loop {
@@ -318,6 +308,16 @@ impl Game for RandomSquaresGame {
 }
 
 impl RandomSquaresGame {
+    fn new(sdl: &sdl2::Sdl) -> Self {
+        RandomSquaresGame {
+            cell_screen: SimpleCellScreen::new(),
+            counter: 0,
+            video: sdl.video().unwrap(),
+            timer: sdl.timer().unwrap(),
+            event: sdl.event().unwrap(),
+        }
+    }
+
     fn handle_event(&mut self, event: GameInputEvent, renderer: &mut Renderer) -> bool {
         self.counter = self.counter + 1;
         let screen_dim = self.cell_screen.dimensions();
@@ -376,11 +376,11 @@ impl TetrisCellScreen {
 
     fn set_figure(&mut self, point: Point, color: TetrisCellColor, figure: Figure) {
         match &self._figure {
-            &Some((_, _, ref old_figure)) if old_figure != &figure => {},
+            &Some((_, old_color, ref old_figure))
+                if old_color == color && old_figure == &figure => {},
             _ => {
                 let bitmap = figure.bitmap();
-                self._figure_layer.reserve(bitmap.len());
-                self._figure_layer.truncate(bitmap.len());
+                self._figure_layer.clear();
                 for flag in bitmap.iter() {
                     self._figure_layer.push(
                         if *flag { Some(color) } else { None });
@@ -449,34 +449,27 @@ impl CellScreen for TetrisCellScreen {
 }
 
 
-struct TetrisGame {
+struct TetrisGame<Random: rand::Rng> {
     cell_screen: TetrisCellScreen,
     dim: Dimensions,
     main_layer: [Option<TetrisCellColor>; CELL_COUNT_X * CELL_COUNT_Y],
     video: sdl2::VideoSubsystem,
     timer: sdl2::TimerSubsystem,
     event: sdl2::EventSubsystem,
+    rng: Random,
 }
 
 
-impl Game for TetrisGame {
-    fn new(sdl: &sdl2::Sdl) -> Self {
-        TetrisGame {
-            cell_screen: TetrisCellScreen::new(),
-            dim: Dimensions(CELL_COUNT_X, CELL_COUNT_Y),
-            main_layer: [None; CELL_COUNT_X * CELL_COUNT_Y],
-            video: sdl.video().unwrap(),
-            timer: sdl.timer().unwrap(),
-            event: sdl.event().unwrap(),
-        }
-    }
-
+impl <Random: rand::Rng> Game for TetrisGame<Random> {
     fn run(&mut self, event_pump: &mut sdl2::EventPump, renderer: &mut Renderer) {
+        self.cell_screen.render_cell_screen(renderer);
+        renderer.present();
+
         let event = self.event.clone();
         let timer = self.timer.clone();
-        let timer = timer.add_timer(0, Box::new(move || {
+        let timer = timer.add_timer(PERIOD_MS, Box::new(move || {
             event.push_event(timer_event()).unwrap();
-            1000
+            PERIOD_MS
         }));
 
         'game: loop {
@@ -501,27 +494,49 @@ impl Game for TetrisGame {
 }
 
 
-impl TetrisGame {
+impl <Random: rand::Rng> TetrisGame<Random> {
+    fn new(sdl: &sdl2::Sdl, rng: Random) -> Self {
+        let mut game = TetrisGame {
+            cell_screen: TetrisCellScreen::new(),
+            dim: Dimensions(CELL_COUNT_X, CELL_COUNT_Y),
+            main_layer: [None; CELL_COUNT_X * CELL_COUNT_Y],
+            video: sdl.video().unwrap(),
+            timer: sdl.timer().unwrap(),
+            event: sdl.event().unwrap(),
+            rng: rng,
+        };
+        let norm = game.create_new_figure();
+        assert!(norm);
+
+        game
+    }
+
+    fn create_new_figure(&mut self) -> bool {
+        self.cell_screen._figure = None;
+        let figure: Figure = self.rng.gen();
+        let offset = figure.offset_from_top_center();
+        assert!(offset.1 == 0);
+        let dim = self.cell_screen.dimensions();
+        let point = Point(
+            (dim.0 as isize / 2 + offset.0) as usize,
+            offset.1 as usize,
+            );
+
+        self.cell_screen.set_figure(point, self.rng.gen(), figure);
+        true
+    }
+
     fn handle_event(&mut self, event: GameInputEvent, renderer: &mut Renderer) -> bool {
         match event {
             GameInputEvent::Timer => {
-                let (point, color, figure) = match self.cell_screen.get_figure() {
-                    None => {
-                        let figure = rand::random::<Figure>();
-                        let offset = figure.offset_from_top_center();
-                        let dim = self.cell_screen.dimensions();
-                        let point = Point(
-                            (dim.0 as isize / 2 + offset.0) as usize,
-                            offset.1 as usize,
-                            );
-
-                        (point, rand::random(), figure)
-                    },
-                    Some((old_point, color, figure)) => {
-                        (Point(old_point.0, old_point.1 + 1), color, figure)
-                    },
-                };
-                self.cell_screen.set_figure(point, color, figure);
+                let (point, color, figure) = self.cell_screen.get_figure().unwrap();
+                if (point.1 + figure.dimensions().1 == self.cell_screen.dimensions().1) {
+                    if ! self.create_new_figure() {
+                        return false;
+                    }
+                } else {
+                    self.cell_screen.set_figure(Point(point.0, point.1 + 1), color, figure);
+                }
             },
             GameInputEvent::MoveLeft => if self.cell_screen.has_figure() {
                 self.move_figure_left();
@@ -603,7 +618,8 @@ fn main() {
     let sdl_context = sdl2::init().unwrap();
     let event_subsystem = sdl_context.event().unwrap();
 
-    let mut game = TetrisGame::new(&sdl_context);
+    // let mut game = RandomSquaresGame::new(&sdl_context);
+    let mut game = TetrisGame::new(&sdl_context, rand::weak_rng());
     let window_size = game.window_size();
 
     let window = sdl_context.video().unwrap().window("Tetris", window_size.0, window_size.1).build().unwrap();
