@@ -18,6 +18,7 @@ use sdl2_sys::event::SDL_USEREVENT;
 const CELL_COUNT_X: usize = 10;
 const CELL_COUNT_Y: usize = 16;
 const PERIOD_MS: u32 = 333;
+const SPEED_UP_AFTER: usize = 100;
 
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -427,6 +428,7 @@ struct TetrisGame<Random: rand::Rng> {
     event: sdl2::EventSubsystem,
     rng: Random,
     paused: atomic::AtomicBool,
+    step: usize,
 }
 
 
@@ -435,11 +437,12 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
         self.cell_screen.render_cell_screen(renderer);
         renderer.present();
 
+        let mut period = PERIOD_MS;
         let timer_subsystem = self.timer.clone();
         let event = self.event.clone();
         let timer_callback = move || {
             event.push_event(timer_event()).unwrap();
-            PERIOD_MS
+            period
         };
 
         let timer = std::cell::RefCell::new(
@@ -459,9 +462,9 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
                             let event = self.event.clone();
                             let timer_callback = move || {
                                 event.push_event(timer_event()).unwrap();
-                                PERIOD_MS
+                                period
                             };
-                            Some(timer_subsystem.add_timer(PERIOD_MS, Box::new(timer_callback)))
+                            Some(timer_subsystem.add_timer(period, Box::new(timer_callback)))
                         } else {
                             None
                         };
@@ -470,8 +473,19 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
 
                     event => if running {
                         match GameInputEvent::from_sdl_event(&event) {
-                            Some(event) => if !self.handle_event(event, renderer) {
-                                running = false;
+                            Some(event) => {
+                                let (_running, speed_up) = self.handle_event(event, renderer);
+                                running = _running;
+                                if running && speed_up {
+                                    period = period * 3 / 4;
+                                    let event = self.event.clone();
+                                    let timer_callback = move || {
+                                        event.push_event(timer_event()).unwrap();
+                                        period
+                                    };
+                                    let new_timer = Some(timer_subsystem.add_timer(period, Box::new(timer_callback)));
+                                    *timer.borrow_mut() = new_timer;
+                                }
                             },
                             None => {},
                         }
@@ -498,6 +512,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             event: sdl.event().unwrap(),
             rng: rng,
             paused: atomic::AtomicBool::new(true),
+            step: 0,
         };
         let norm = game.create_new_figure();
         assert!(norm);
@@ -523,7 +538,8 @@ impl <Random: rand::Rng> TetrisGame<Random> {
         }
     }
 
-    fn handle_event(&mut self, event: GameInputEvent, renderer: &mut Renderer) -> bool {
+    fn handle_event(&mut self, event: GameInputEvent, renderer: &mut Renderer) -> (bool, bool) {
+        // returns (running, speed up)
         let recreate_figure: bool = match event {
             GameInputEvent::Timer => {
                 ! self._try_move_figure_down()
@@ -553,16 +569,17 @@ impl <Random: rand::Rng> TetrisGame<Random> {
 
         if recreate_figure {
             self.remove_filled_lines();
+            self.step += 1;
 
             if ! self.create_new_figure() {
-                return false;
+                return (false, false);
             }
         }
 
         self.cell_screen.render_cell_screen(renderer);
         renderer.present();
 
-        true
+        (true, recreate_figure && (self.step > 0) && (self.step % SPEED_UP_AFTER == 0))
     }
 
     fn move_figure_left(&mut self) {
