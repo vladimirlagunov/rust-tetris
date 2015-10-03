@@ -222,7 +222,7 @@ impl GameInputEvent {
             &Event::KeyDown {keycode: Some(ref keycode), ..} => match keycode {
                 &Keycode::Left => Some(GameInputEvent::MoveLeft),
                 &Keycode::Right => Some(GameInputEvent::MoveRight),
-                &Keycode::Space => Some(GameInputEvent::MoveDown),
+                &Keycode::Down | &Keycode::Space => Some(GameInputEvent::MoveDown),
                 &Keycode::Up => Some(GameInputEvent::RotateClockwise),
                 _ => None,
             },
@@ -512,52 +512,33 @@ impl <Random: rand::Rng> TetrisGame<Random> {
     }
 
     fn handle_event(&mut self, event: GameInputEvent, renderer: &mut Renderer) -> bool {
-        match event {
+        let recreate_figure: bool = match event {
             GameInputEvent::Timer => {
-                let (point, color, figure) = self.cell_screen.get_figure().unwrap();
-                if (point.1 + figure.dimensions().1 == self.cell_screen.dimensions().1) {
-                    let fig_dim = figure.dimensions();
-                    let mut new_cells = self.cell_screen._figure_layer.clone().into_iter();
-                    for y in point.1 .. point.1 + fig_dim.1 {
-                        for x in point.0 .. point.0 + fig_dim.0 {
-                            self.cell_screen.set_cell(
-                                Point(x, y),
-                                new_cells.next().unwrap().clone());
-                        }
-                    }
-
-                    if ! self.create_new_figure() {
-                        return false;
-                    }
-                } else {
-                    self.cell_screen.set_figure(Point(point.0, point.1 + 1), color, figure);
-                }
+                ! self._try_move_figure_down()            
             },
-            GameInputEvent::MoveLeft => if self.cell_screen.has_figure() {
-                self.move_figure_left();
+            GameInputEvent::MoveLeft => {
+                if self.cell_screen.has_figure() { self.move_figure_left() }
+                false
             },
-            GameInputEvent::MoveRight => if self.cell_screen.has_figure() {
-                self.move_figure_right();
+            GameInputEvent::MoveRight => {
+                if self.cell_screen.has_figure() { self.move_figure_right() }
+                false
+            },
+            GameInputEvent::MoveDown => {
+                if self.cell_screen.has_figure() { self.move_figure_down() }
+                true
             },
             GameInputEvent::RotateClockwise => {
-                let (point, color, figure) = self.cell_screen.get_figure().unwrap();
-                let (offset, rotated_figure) = figure.rotate_clockwise();
-
-                let new_x = (point.0 as isize + offset.0) as usize;
-                let new_y = (point.1 as isize + offset.1) as usize;
-                let dim = self.cell_screen.dimensions();
-                let fig_dim = rotated_figure.dimensions();
-
-                let new_x = min(max(new_x, 0), dim.0 - fig_dim.0);
-                let new_y = min(max(new_y, 0), dim.1 - fig_dim.1);
-
-                self.cell_screen.set_figure(
-                    Point(new_x, new_y),
-                    color,
-                    rotated_figure,
-                    );
+                if self.cell_screen.has_figure() { self.rotate_clockwise() }
+                false
             },
-            _ => {},
+            _ => false,
+        };
+
+        if recreate_figure {
+            if ! self.create_new_figure() {
+                return false;
+            }
         }
 
         self.cell_screen.render_cell_screen(renderer);
@@ -580,6 +561,50 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             point.0 += 1;
             self.cell_screen.set_figure(point, color, figure);
         }
+    }
+
+    fn move_figure_down(&mut self) {
+        while self._try_move_figure_down() {}
+    }
+
+    fn _try_move_figure_down(&mut self) -> bool {
+        let (point, color, figure) = self.cell_screen.get_figure().unwrap();
+        if (point.1 + figure.dimensions().1 == self.cell_screen.dimensions().1) {
+            let fig_dim = figure.dimensions();
+            let mut new_cells = self.cell_screen._figure_layer.clone().into_iter();
+            for y in point.1 .. point.1 + fig_dim.1 {
+                for x in point.0 .. point.0 + fig_dim.0 {
+                    self.cell_screen.set_cell(
+                        Point(x, y),
+                        new_cells.next().unwrap().clone());
+                }
+            }
+
+            false
+        } else {
+            self.cell_screen.set_figure(Point(point.0, point.1 + 1), color, figure);
+            true
+        }
+        
+    }
+
+    fn rotate_clockwise(&mut self) {
+        let (point, color, figure) = self.cell_screen.get_figure().unwrap();
+        let (offset, rotated_figure) = figure.rotate_clockwise();
+
+        let new_x = (point.0 as isize + offset.0) as usize;
+        let new_y = (point.1 as isize + offset.1) as usize;
+        let dim = self.cell_screen.dimensions();
+        let fig_dim = rotated_figure.dimensions();
+
+        let new_x = min(max(new_x, 0), dim.0 - fig_dim.0);
+        let new_y = min(max(new_y, 0), dim.1 - fig_dim.1);
+
+        self.cell_screen.set_figure(
+            Point(new_x, new_y),
+            color,
+            rotated_figure,
+            );
     }
 }
 
