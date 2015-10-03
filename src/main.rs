@@ -557,6 +557,8 @@ impl <Random: rand::Rng> TetrisGame<Random> {
         };
 
         if recreate_figure {
+            self.remove_filled_lines();
+
             if ! self.create_new_figure() {
                 return false;
             }
@@ -648,6 +650,39 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             color,
             rotated_figure,
             );
+    }
+
+    fn remove_filled_lines(&mut self) {
+        let dim = self.cell_screen.dimensions();
+
+        let mut offset = 0;
+        let mut move_row_list = Vec::with_capacity(dim.1);
+
+        let mut cell_position = 0;
+        for line_number in 0 .. dim.1 {
+            let mut filled_line = true;
+            for _ in 0 .. dim.0 {
+                filled_line &= ! self.cell_screen.cells[cell_position].is_none();
+                cell_position += 1;
+            }
+            if filled_line {
+                offset += dim.0;
+            }
+            move_row_list.push(offset);
+        }
+
+        assert!(cell_position == dim.0 * dim.1);
+        while cell_position > 0 {
+            let cell_offset = move_row_list.pop().unwrap();
+            if cell_offset == 0 { break }
+
+            for _ in 0 .. dim.0 {
+                cell_position -= 1;
+                assert!(cell_position >= 0);
+                self.cell_screen.cells[cell_position] = self.cell_screen.cells[
+                    cell_position - cell_offset];
+            }
+        }
     }
 }
 
