@@ -471,7 +471,7 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
                         *timer.borrow_mut() = new_timer;
                     },
 
-                    event => if running {
+                    event => if running && ! timer.borrow().is_none() {
                         match GameInputEvent::from_sdl_event(&event) {
                             Some(event) => {
                                 let (_running, speed_up) = self.handle_event(event, renderer);
