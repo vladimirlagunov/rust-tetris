@@ -3,6 +3,7 @@ extern crate sdl2_sys;
 extern crate rand;
 
 
+use std::cmp::{min, max};
 use std::vec::Vec;
 use std::borrow::Borrow;
 use std::rc::Rc;
@@ -21,7 +22,7 @@ use rand::random;
 
 const CELL_COUNT_X: usize = 10;
 const CELL_COUNT_Y: usize = 16;
-const PERIOD_MS: u32 = 200;
+const PERIOD_MS: u32 = 333;
 
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -538,6 +539,24 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             GameInputEvent::MoveRight => if self.cell_screen.has_figure() {
                 self.move_figure_right();
             },
+            GameInputEvent::RotateClockwise => {
+                let (point, color, figure) = self.cell_screen.get_figure().unwrap();
+                let (offset, rotated_figure) = figure.rotate_clockwise();
+
+                let new_x = (point.0 as isize + offset.0) as usize;
+                let new_y = (point.1 as isize + offset.1) as usize;
+                let dim = self.cell_screen.dimensions();
+                let fig_dim = rotated_figure.dimensions();
+
+                let new_x = min(max(new_x, 0), dim.0 - fig_dim.0);
+                let new_y = min(max(new_y, 0), dim.1 - fig_dim.1);
+
+                self.cell_screen.set_figure(
+                    Point(new_x, new_y),
+                    color,
+                    rotated_figure,
+                    );
+            },
             _ => {},
         }
 
@@ -568,17 +587,17 @@ impl <Random: rand::Rng> TetrisGame<Random> {
 #[derive(Clone, PartialEq, Debug)]
 enum Figure {
     Cube,
-    LineHorisontal,
+    LineHorizontal,
     LineVertical,
 
-    LeftFrame0,
-    LeftFrame90,
-    LeftFrame180,
-    LeftFrame270,
-    RightFrame0,
-    RightFrame90,
-    RightFrame180,
-    RightFrame270,
+    LeftL0,
+    LeftL90,
+    LeftL180,
+    LeftL270,
+    RightL0,
+    RightL90,
+    RightL180,
+    RightL270,
 
     LeftZigzagHorizontal,
     LeftZigzagVertical,
@@ -597,52 +616,52 @@ const CUBE_CELLS: &'static [bool] = &[
     true, true,
     ];
 
-const LINE_HORISONTAL: &'static [bool] = &[
+const LINE_HORIZONTAL: &'static [bool] = &[
     true, true, true, true
     ];
 
-const LINE_VERTICAL: &'static [bool] = LINE_HORISONTAL;
+const LINE_VERTICAL: &'static [bool] = LINE_HORIZONTAL;
 
-const LEFT_FRAME_0: &'static [bool] = &[
+const LEFT_L_0: &'static [bool] = &[
     true,  true,
     false, true,
     false, true,
     ];
 
-const LEFT_FRAME_90: &'static [bool] = &[
+const LEFT_L_90: &'static [bool] = &[
     false, false, true,
     true,  true,  true,
     ];
 
-const LEFT_FRAME_180: &'static [bool] = &[
+const LEFT_L_180: &'static [bool] = &[
     true,  false,
     true,  false,
     true,  true,
     ];
 
-const LEFT_FRAME_270: &'static [bool] = &[
+const LEFT_L_270: &'static [bool] = &[
     true,  true,  true,
     true,  false, false,
     ];
 
-const RIGHT_FRAME_0: &'static [bool] = &[
-    true, true, 
+const RIGHT_L_0: &'static [bool] = &[
+    true, true,
     true, false,
     true, false,
     ];
 
-const RIGHT_FRAME_90: &'static [bool] = &[
+const RIGHT_L_90: &'static [bool] = &[
     true,  true,  true,
     false, false, true,
     ];
 
-const RIGHT_FRAME_180: &'static [bool] = &[
+const RIGHT_L_180: &'static [bool] = &[
     false, true,
     false, true,
     true,  true,
     ];
 
-const RIGHT_FRAME_270: &'static [bool] = &[
+const RIGHT_L_270: &'static [bool] = &[
     true,  false, false,
     true,  true,  true,
     ];
@@ -696,18 +715,18 @@ impl Figure {
     fn offset_from_top_center(&self) -> PointOffset {
         match self {
             &Figure::Cube => PointOffset(-1, 0),
-            &Figure::LineHorisontal => PointOffset(-2, 0),
+            &Figure::LineHorizontal => PointOffset(-2, 0),
             &Figure::LineVertical => PointOffset(0, 0),
 
-            &Figure::LeftFrame0 => PointOffset(-1, 0),
-            &Figure::LeftFrame90 => PointOffset(-2, 0),
-            &Figure::LeftFrame180 => PointOffset(-1, 0),
-            &Figure::LeftFrame270 => PointOffset(-2, 0),
+            &Figure::LeftL0 => PointOffset(-1, 0),
+            &Figure::LeftL90 => PointOffset(-2, 0),
+            &Figure::LeftL180 => PointOffset(-1, 0),
+            &Figure::LeftL270 => PointOffset(-2, 0),
 
-            &Figure::RightFrame0 => PointOffset(-1, 0),
-            &Figure::RightFrame90 => PointOffset(-2, 0),
-            &Figure::RightFrame180 => PointOffset(-1, 0),
-            &Figure::RightFrame270 => PointOffset(-2, 0),
+            &Figure::RightL0 => PointOffset(-1, 0),
+            &Figure::RightL90 => PointOffset(-2, 0),
+            &Figure::RightL180 => PointOffset(-1, 0),
+            &Figure::RightL270 => PointOffset(-2, 0),
 
             &Figure::LeftZigzagHorizontal => PointOffset(-1, 0),
             &Figure::LeftZigzagVertical => PointOffset(-1, 0),
@@ -724,22 +743,22 @@ impl Figure {
     fn dimensions(&self) -> Dimensions {
         match self {
             &Figure::Cube => Dimensions(2, 2),
-            &Figure::LineHorisontal => Dimensions(4, 1),
+            &Figure::LineHorizontal => Dimensions(4, 1),
             &Figure::LineVertical => Dimensions(1, 4),
 
-            &Figure::LeftFrame0 => Dimensions(2, 3),
-            &Figure::LeftFrame90 => Dimensions(3, 2),
-            &Figure::LeftFrame180 => Dimensions(2, 3),
-            &Figure::LeftFrame270 => Dimensions(3, 2),
-            &Figure::RightFrame0 => Dimensions(2, 3),
-            &Figure::RightFrame90 => Dimensions(3, 2),
-            &Figure::RightFrame180 => Dimensions(2, 3),
-            &Figure::RightFrame270 => Dimensions(3, 2),
+            &Figure::LeftL0 => Dimensions(2, 3),
+            &Figure::LeftL90 => Dimensions(3, 2),
+            &Figure::LeftL180 => Dimensions(2, 3),
+            &Figure::LeftL270 => Dimensions(3, 2),
+            &Figure::RightL0 => Dimensions(2, 3),
+            &Figure::RightL90 => Dimensions(3, 2),
+            &Figure::RightL180 => Dimensions(2, 3),
+            &Figure::RightL270 => Dimensions(3, 2),
 
-            &Figure::LeftZigzagHorizontal => Dimensions(2, 3),
-            &Figure::LeftZigzagVertical => Dimensions(3, 2),
-            &Figure::RightZigzagHorizontal => Dimensions(2, 3),
-            &Figure::RightZigzagVertical => Dimensions(3, 2),
+            &Figure::LeftZigzagHorizontal => Dimensions(3, 2),
+            &Figure::LeftZigzagVertical => Dimensions(2, 3),
+            &Figure::RightZigzagHorizontal => Dimensions(3, 2),
+            &Figure::RightZigzagVertical => Dimensions(2, 3),
 
             &Figure::Pyramid0 => Dimensions(3, 2),
             &Figure::Pyramid90 => Dimensions(2, 3),
@@ -751,17 +770,17 @@ impl Figure {
     fn color(&self) -> TetrisCellColor {
         match self {
             &Figure::Cube => TetrisCellColor::Red,
-            &Figure::LineHorisontal => TetrisCellColor::Orange,
+            &Figure::LineHorizontal => TetrisCellColor::Orange,
             &Figure::LineVertical => TetrisCellColor::Orange,
 
-            &Figure::LeftFrame0 => TetrisCellColor::Yellow,
-            &Figure::LeftFrame90 => TetrisCellColor::Yellow,
-            &Figure::LeftFrame180 => TetrisCellColor::Yellow,
-            &Figure::LeftFrame270 => TetrisCellColor::Yellow,
-            &Figure::RightFrame0 => TetrisCellColor::Green,
-            &Figure::RightFrame90 => TetrisCellColor::Green,
-            &Figure::RightFrame180 => TetrisCellColor::Green,
-            &Figure::RightFrame270 => TetrisCellColor::Green,
+            &Figure::LeftL0 => TetrisCellColor::Yellow,
+            &Figure::LeftL90 => TetrisCellColor::Yellow,
+            &Figure::LeftL180 => TetrisCellColor::Yellow,
+            &Figure::LeftL270 => TetrisCellColor::Yellow,
+            &Figure::RightL0 => TetrisCellColor::Green,
+            &Figure::RightL90 => TetrisCellColor::Green,
+            &Figure::RightL180 => TetrisCellColor::Green,
+            &Figure::RightL270 => TetrisCellColor::Green,
 
             &Figure::LeftZigzagHorizontal => TetrisCellColor::Blue,
             &Figure::LeftZigzagVertical => TetrisCellColor::Blue,
@@ -778,17 +797,17 @@ impl Figure {
     fn bitmap(&self) -> &'static [bool] {
         match self {
             &Figure::Cube => CUBE_CELLS,
-            &Figure::LineHorisontal => LINE_HORISONTAL,
+            &Figure::LineHorizontal => LINE_HORIZONTAL,
             &Figure::LineVertical => LINE_VERTICAL,
 
-            &Figure::LeftFrame0 => LEFT_FRAME_0,
-            &Figure::LeftFrame90 => LEFT_FRAME_90,
-            &Figure::LeftFrame180 => LEFT_FRAME_180,
-            &Figure::LeftFrame270 => LEFT_FRAME_270,
-            &Figure::RightFrame0 => RIGHT_FRAME_0,
-            &Figure::RightFrame90 => RIGHT_FRAME_90,
-            &Figure::RightFrame180 => RIGHT_FRAME_180,
-            &Figure::RightFrame270 => RIGHT_FRAME_270,
+            &Figure::LeftL0 => LEFT_L_0,
+            &Figure::LeftL90 => LEFT_L_90,
+            &Figure::LeftL180 => LEFT_L_180,
+            &Figure::LeftL270 => LEFT_L_270,
+            &Figure::RightL0 => RIGHT_L_0,
+            &Figure::RightL90 => RIGHT_L_90,
+            &Figure::RightL180 => RIGHT_L_180,
+            &Figure::RightL270 => RIGHT_L_270,
 
             &Figure::LeftZigzagHorizontal => LEFT_ZIGZAG_HORIZONTAL,
             &Figure::LeftZigzagVertical => LEFT_ZIGZAG_VERTICAL,
@@ -801,6 +820,34 @@ impl Figure {
             &Figure::Pyramid270 => PYRAMID_270,
         }
     }
+
+    fn rotate_clockwise(self) -> (PointOffset, Self) {
+        match self {
+            Figure::Cube => (PointOffset(0, 0), Figure::Cube),
+            Figure::LineHorizontal => (PointOffset(2, -2), Figure::LineVertical),
+            Figure::LineVertical => (PointOffset(-2, 2), Figure::LineHorizontal),
+
+            Figure::LeftL0 => (PointOffset(0, 0), Figure::LeftL90),
+            Figure::LeftL90 => (PointOffset(0, 0), Figure::LeftL180),
+            Figure::LeftL180 => (PointOffset(0, 0), Figure::LeftL270),
+            Figure::LeftL270 => (PointOffset(0, 0), Figure::LeftL0),
+
+            Figure::RightL0 => (PointOffset(0, 0), Figure::RightL90),
+            Figure::RightL90 => (PointOffset(0, 0), Figure::RightL180),
+            Figure::RightL180 => (PointOffset(0, 0), Figure::RightL270),
+            Figure::RightL270 => (PointOffset(0, 0), Figure::RightL0),
+
+            Figure::LeftZigzagHorizontal => (PointOffset(0, 0), Figure::LeftZigzagVertical),
+            Figure::LeftZigzagVertical => (PointOffset(0, 0), Figure::LeftZigzagHorizontal),
+            Figure::RightZigzagHorizontal => (PointOffset(0, 0), Figure::RightZigzagHorizontal),
+            Figure::RightZigzagVertical => (PointOffset(0, 0), Figure::RightZigzagVertical),
+
+            Figure::Pyramid0 => (PointOffset(0, 0), Figure::Pyramid90),
+            Figure::Pyramid90 => (PointOffset(0, 0), Figure::Pyramid180),
+            Figure::Pyramid180 => (PointOffset(0, 0), Figure::Pyramid270),
+            Figure::Pyramid270 => (PointOffset(0, 0), Figure::Pyramid0),
+        }
+    }
 }
 
 
@@ -808,17 +855,17 @@ impl rand::Rand for Figure {
     fn rand<R: rand::Rng>(rng: &mut R) -> Self {
         match rng.next_u32() % 14 {
             0 => Figure::Cube,
-            1 => Figure::LineHorisontal,
+            1 => Figure::LineHorizontal,
             2 => Figure::LineVertical,
 
-            3 => Figure::LeftFrame0,
-            4 => Figure::LeftFrame90,
-            5 => Figure::LeftFrame180,
-            6 => Figure::LeftFrame270,
-            7 => Figure::RightFrame0,
-            8 => Figure::RightFrame90,
-            9 => Figure::RightFrame180,
-            10 => Figure::RightFrame270,
+            3 => Figure::LeftL0,
+            4 => Figure::LeftL90,
+            5 => Figure::LeftL180,
+            6 => Figure::LeftL270,
+            7 => Figure::RightL0,
+            8 => Figure::RightL90,
+            9 => Figure::RightL180,
+            10 => Figure::RightL270,
 
             11 => Figure::LeftZigzagHorizontal,
             12 => Figure::LeftZigzagVertical,
