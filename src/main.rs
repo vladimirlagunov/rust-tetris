@@ -459,12 +459,14 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
         let timer = std::cell::RefCell::new(
             Some(timer_subsystem.add_timer(PERIOD_MS, Box::new(timer_callback))));
 
-        'game: loop {
+        let mut running = true;
+
+        loop {
             for event in event_pump.poll_iter() {
                 match event {
-                    Event::Quit {..} => break 'game,
-                    Event::KeyDown {keycode: Some(Keycode::Q), ..} => break 'game,
-                    Event::KeyDown {keycode: Some(Keycode::Escape), ..} => break 'game,
+                    Event::Quit {..} => return,
+                    Event::KeyDown {keycode: Some(Keycode::Q), ..} => return,
+                    Event::KeyDown {keycode: Some(Keycode::Escape), ..} => return,
 
                     Event::KeyDown {keycode: Some(Keycode::P), ..} => {
                         let new_timer = if timer.borrow().is_none() {
@@ -480,9 +482,13 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
                         *timer.borrow_mut() = new_timer;
                     },
 
-                    event => match GameInputEvent::from_sdl_event(&event) {
-                        Some(event) => if !self.handle_event(event, renderer) { break 'game },
-                        None => {},
+                    event => if running {
+                        match GameInputEvent::from_sdl_event(&event) {
+                            Some(event) => if !self.handle_event(event, renderer) {
+                                running = false;
+                            },
+                            None => {},
+                        }
                     },
                 }
             }
