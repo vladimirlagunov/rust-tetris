@@ -616,10 +616,11 @@ impl <Random: rand::Rng> TetrisGame<Random> {
         let figure_bitmap = figure.bitmap();
         let existing_cells = self.cell_screen.cells;
         let fig_dim = figure.dimensions();
+        let screen_dim = self.cell_screen.dimensions();
 
         for y in 0 .. fig_dim.1 {
             for x in 0 .. fig_dim.0 {
-                let screen_offset_below = (point.1 + y + 1) * fig_dim.0 + point.0 + x;
+                let screen_offset_below = (point.1 + y + 1) * screen_dim.0 + point.0 + x;
                 let is_cell_in_figure = figure_bitmap[y * fig_dim.0 + x];
                 let has_cell_below = ! existing_cells[screen_offset_below].is_none();
                 if is_cell_in_figure && has_cell_below {
@@ -906,8 +907,8 @@ impl Figure {
 
             Figure::LeftZigzagHorizontal => (PointOffset(0, 0), Figure::LeftZigzagVertical),
             Figure::LeftZigzagVertical => (PointOffset(0, 0), Figure::LeftZigzagHorizontal),
-            Figure::RightZigzagHorizontal => (PointOffset(0, 0), Figure::RightZigzagHorizontal),
-            Figure::RightZigzagVertical => (PointOffset(0, 0), Figure::RightZigzagVertical),
+            Figure::RightZigzagHorizontal => (PointOffset(0, 0), Figure::RightZigzagVertical),
+            Figure::RightZigzagVertical => (PointOffset(0, 0), Figure::RightZigzagHorizontal),
 
             Figure::Pyramid0 => (PointOffset(0, 0), Figure::Pyramid90),
             Figure::Pyramid90 => (PointOffset(0, 0), Figure::Pyramid180),
