@@ -79,7 +79,7 @@ impl <C: CellScreen> CellScreenRenderer for C {
         let Dimensions(x_glob_offset, y_glob_offset) = self.global_offset();
 
         let Dimensions(x_max, y_max) = self.dimensions();
-        let mut cells: Vec<Option<TetrisCellColor>> = Vec::with_capacity(x_max * y_max);
+        let mut cells = std::iter::repeat(None).take(x_max * y_max).collect::<Vec<_>>();
 
         let cell_size = self.cell_size();
         let cell_spacing = self.cell_spacing();
@@ -96,10 +96,6 @@ impl <C: CellScreen> CellScreenRenderer for C {
             (cell_size.1 * y_max) as u32,
             ));
 
-        for _ in 0 .. x_max * y_max {
-            cells.push(None);
-        }
-
         for layer_params in self.layers() {
             let (Point(layer_x0, layer_y0),
                  Dimensions(layer_width, layer_height),
@@ -112,7 +108,9 @@ impl <C: CellScreen> CellScreenRenderer for C {
             let mut layer_cell_iter = layer_cells.iter();
             for y in layer_y0 .. layer_y0 + layer_height {
                 for x in layer_x0 .. layer_x0 + layer_width {
-                    cells[y * x_max + x] = layer_cell_iter.next().unwrap().clone();
+                    if let Some(color) = layer_cell_iter.next().unwrap().clone() {
+                        cells[y * x_max + x] = Some(color);
+                    }
                 }
             }
         }
@@ -574,9 +572,9 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             let mut new_cells = self.cell_screen._figure_layer.clone().into_iter();
             for y in point.1 .. point.1 + fig_dim.1 {
                 for x in point.0 .. point.0 + fig_dim.0 {
-                    self.cell_screen.set_cell(
-                        Point(x, y),
-                        new_cells.next().unwrap().clone());
+                    if let Some(color) = new_cells.next().unwrap().clone() {
+                        self.cell_screen.set_cell(Point(x, y), Some(color));
+                    }
                 }
             }
 
