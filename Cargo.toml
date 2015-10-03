@@ -3,7 +3,6 @@
 name = "tetris"
 version = "0.1.0"
 authors = ["Vladimir Lagunov <lagunov.vladimir@gmail.com>"]
-build = "build.rs"
 
 
 [dependencies]
