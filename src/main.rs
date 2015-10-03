@@ -8,6 +8,7 @@ use std::vec::Vec;
 use std::borrow::Borrow;
 use std::rc::Rc;
 use std::marker::PhantomData;
+use std::sync::atomic;
 
 use sdl2::pixels::Color;
 use sdl2::surface::Surface;
@@ -209,7 +210,6 @@ enum GameInputEvent {
     MoveRight,
     MoveDown,
     Timer,
-    Start,
 }
 
 
@@ -440,6 +440,7 @@ struct TetrisGame<Random: rand::Rng> {
     timer: sdl2::TimerSubsystem,
     event: sdl2::EventSubsystem,
     rng: Random,
+    paused: atomic::AtomicBool,
 }
 
 
@@ -448,12 +449,15 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
         self.cell_screen.render_cell_screen(renderer);
         renderer.present();
 
+        let timer_subsystem = self.timer.clone();
         let event = self.event.clone();
-        let timer = self.timer.clone();
-        let timer = timer.add_timer(PERIOD_MS, Box::new(move || {
+        let timer_callback = move || {
             event.push_event(timer_event()).unwrap();
             PERIOD_MS
-        }));
+        };
+
+        let timer = std::cell::RefCell::new(
+            Some(timer_subsystem.add_timer(PERIOD_MS, Box::new(timer_callback))));
 
         'game: loop {
             for event in event_pump.poll_iter() {
@@ -461,6 +465,21 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
                     Event::Quit {..} => break 'game,
                     Event::KeyDown {keycode: Some(Keycode::Q), ..} => break 'game,
                     Event::KeyDown {keycode: Some(Keycode::Escape), ..} => break 'game,
+
+                    Event::KeyDown {keycode: Some(Keycode::P), ..} => {
+                        let new_timer = if timer.borrow().is_none() {
+                            let event = self.event.clone();
+                            let timer_callback = move || {
+                                event.push_event(timer_event()).unwrap();
+                                PERIOD_MS
+                            };
+                            Some(timer_subsystem.add_timer(PERIOD_MS, Box::new(timer_callback)))
+                        } else {
+                            None
+                        };
+                        *timer.borrow_mut() = new_timer;
+                    },
+
                     event => match GameInputEvent::from_sdl_event(&event) {
                         Some(event) => if !self.handle_event(event, renderer) { break 'game },
                         None => {},
@@ -487,10 +506,10 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             timer: sdl.timer().unwrap(),
             event: sdl.event().unwrap(),
             rng: rng,
+            paused: atomic::AtomicBool::new(true),
         };
         let norm = game.create_new_figure();
         assert!(norm);
-
         game
     }
 
@@ -505,14 +524,18 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             offset.1 as usize,
             );
 
-        self.cell_screen.set_figure(point, figure.color(), figure);
-        true
+        if self._figure_overlaps_cells(&point, &figure) {
+            false
+        } else {
+            self.cell_screen.set_figure(point, figure.color(), figure);
+            true
+        }
     }
 
     fn handle_event(&mut self, event: GameInputEvent, renderer: &mut Renderer) -> bool {
         let recreate_figure: bool = match event {
             GameInputEvent::Timer => {
-                ! self._try_move_figure_down()            
+                ! self._try_move_figure_down()
             },
             GameInputEvent::MoveLeft => {
                 if self.cell_screen.has_figure() { self.move_figure_left() }
@@ -567,8 +590,16 @@ impl <Random: rand::Rng> TetrisGame<Random> {
 
     fn _try_move_figure_down(&mut self) -> bool {
         let (point, color, figure) = self.cell_screen.get_figure().unwrap();
-        if (point.1 + figure.dimensions().1 == self.cell_screen.dimensions().1) {
             let fig_dim = figure.dimensions();
+
+        let mut can_go_down = 
+            (point.1 + figure.dimensions().1) < self.cell_screen.dimensions().1
+            && ! self._figure_overlaps_cells(&point, &figure);
+
+        if (can_go_down) {
+            self.cell_screen.set_figure(Point(point.0, point.1 + 1), color, figure);
+            true
+        } else {
             let mut new_cells = self.cell_screen._figure_layer.clone().into_iter();
             for y in point.1 .. point.1 + fig_dim.1 {
                 for x in point.0 .. point.0 + fig_dim.0 {
@@ -577,13 +608,26 @@ impl <Random: rand::Rng> TetrisGame<Random> {
                     }
                 }
             }
-
             false
-        } else {
-            self.cell_screen.set_figure(Point(point.0, point.1 + 1), color, figure);
-            true
         }
-        
+    }
+
+    fn _figure_overlaps_cells(&self, point: &Point, figure: &Figure) -> bool {
+        let figure_bitmap = figure.bitmap();
+        let existing_cells = self.cell_screen.cells;
+        let fig_dim = figure.dimensions();
+
+        for y in 0 .. fig_dim.1 {
+            for x in 0 .. fig_dim.0 {
+                let screen_offset_below = (point.1 + y + 1) * fig_dim.0 + point.0 + x;
+                let is_cell_in_figure = figure_bitmap[y * fig_dim.0 + x];
+                let has_cell_below = ! existing_cells[screen_offset_below].is_none();
+                if is_cell_in_figure && has_cell_below {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     fn rotate_clockwise(&mut self) {
