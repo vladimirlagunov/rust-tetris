@@ -550,7 +550,12 @@ impl <Random: rand::Rng> TetrisGame<Random> {
                 true
             },
             GameInputEvent::RotateClockwise => {
-                if self.cell_screen.has_figure() { self.rotate_clockwise() }
+                if self.cell_screen.has_figure() { 
+                    if Figure::LineHorizontal == self.cell_screen.get_figure().unwrap().2 {
+                        let x = 1;
+                    }
+                    self.rotate_clockwise();
+                }
                 false
             },
             _ => false,
@@ -574,7 +579,9 @@ impl <Random: rand::Rng> TetrisGame<Random> {
         let (mut point, color, figure) = self.cell_screen.get_figure().unwrap();
         if (point.0 > 0) {
             point.0 -= 1;
-            self.cell_screen.set_figure(point, color, figure);
+            if ! self._figure_overlaps_cells(&point, &figure) {
+                self.cell_screen.set_figure(point, color, figure);
+            }
         }
     }
 
@@ -582,7 +589,9 @@ impl <Random: rand::Rng> TetrisGame<Random> {
         let (mut point, color, figure) = self.cell_screen.get_figure().unwrap();
         if (point.0 < self.cell_screen.dimensions().0 - figure.dimensions().0) {
             point.0 += 1;
-            self.cell_screen.set_figure(point, color, figure);
+            if ! self._figure_overlaps_cells(&point, &figure) {
+                self.cell_screen.set_figure(point, color, figure);
+            }
         }
     }
 
@@ -596,7 +605,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
 
         let mut can_go_down = 
             (point.1 + figure.dimensions().1) < self.cell_screen.dimensions().1
-            && ! self._figure_overlaps_cells(&point, &figure);
+            && ! self._figure_overlaps_cells(&Point(point.0, point.1 + 1), &figure);
 
         if (can_go_down) {
             self.cell_screen.set_figure(Point(point.0, point.1 + 1), color, figure);
@@ -614,7 +623,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
         }
     }
 
-    fn _figure_overlaps_cells(&self, point: &Point, figure: &Figure) -> bool {
+    fn _figure_overlaps_cells(&self, new_point: &Point, figure: &Figure) -> bool {
         let figure_bitmap = figure.bitmap();
         let existing_cells = self.cell_screen.cells;
         let fig_dim = figure.dimensions();
@@ -622,10 +631,10 @@ impl <Random: rand::Rng> TetrisGame<Random> {
 
         for y in 0 .. fig_dim.1 {
             for x in 0 .. fig_dim.0 {
-                let screen_offset_below = (point.1 + y + 1) * screen_dim.0 + point.0 + x;
+                let screen_offset_in_new_point = (new_point.1 + y) * screen_dim.0 + new_point.0 + x;
                 let is_cell_in_figure = figure_bitmap[y * fig_dim.0 + x];
-                let has_cell_below = ! existing_cells[screen_offset_below].is_none();
-                if is_cell_in_figure && has_cell_below {
+                let has_cell_here = ! existing_cells[screen_offset_in_new_point].is_none();
+                if is_cell_in_figure && has_cell_here {
                     return true;
                 }
             }
@@ -637,13 +646,13 @@ impl <Random: rand::Rng> TetrisGame<Random> {
         let (point, color, figure) = self.cell_screen.get_figure().unwrap();
         let (offset, rotated_figure) = figure.rotate_clockwise();
 
-        let new_x = (point.0 as isize + offset.0) as usize;
-        let new_y = (point.1 as isize + offset.1) as usize;
+        let new_x = (max(0, point.0 as isize + offset.0)) as usize;
+        let new_y = (max(0, point.1 as isize + offset.1)) as usize;
         let dim = self.cell_screen.dimensions();
         let fig_dim = rotated_figure.dimensions();
 
-        let new_x = min(max(new_x, 0), dim.0 - fig_dim.0);
-        let new_y = min(max(new_y, 0), dim.1 - fig_dim.1);
+        let new_x = min(new_x, dim.0 - fig_dim.0);
+        let new_y = min(new_y, dim.1 - fig_dim.1);
 
         self.cell_screen.set_figure(
             Point(new_x, new_y),
@@ -655,32 +664,45 @@ impl <Random: rand::Rng> TetrisGame<Random> {
     fn remove_filled_lines(&mut self) {
         let dim = self.cell_screen.dimensions();
 
-        let mut offset = 0;
-        let mut move_row_list = Vec::with_capacity(dim.1);
-
+        let mut any_filled_line = false;
+        let mut filled_lines = Vec::with_capacity(dim.1);
         let mut cell_position = 0;
-        for line_number in 0 .. dim.1 {
+        for line in 0 .. dim.1 {
             let mut filled_line = true;
             for _ in 0 .. dim.0 {
                 filled_line &= ! self.cell_screen.cells[cell_position].is_none();
                 cell_position += 1;
             }
-            if filled_line {
-                offset += dim.0;
-            }
-            move_row_list.push(offset);
+            filled_lines.push(filled_line);
+            any_filled_line |= filled_line;
         }
 
         assert!(cell_position == dim.0 * dim.1);
-        while cell_position > 0 {
-            let cell_offset = move_row_list.pop().unwrap();
-            if cell_offset == 0 { break }
 
+        if ! any_filled_line {
+            return;
+        }
+
+        let mut offset = 0;
+        for line in 0 .. dim.1 {
+            let line = dim.1 - line;
+
+            if line == filled_lines.len() {
+                while filled_lines.pop().unwrap() {
+                    offset += dim.0;
+                }
+            }
+           
             for _ in 0 .. dim.0 {
                 cell_position -= 1;
-                assert!(cell_position >= 0);
-                self.cell_screen.cells[cell_position] = self.cell_screen.cells[
-                    cell_position - cell_offset];
+                if offset != 0 {
+                    let new_cell = if cell_position >= offset {
+                        self.cell_screen.cells[cell_position - offset]
+                    } else {
+                        None
+                    };
+                    self.cell_screen.cells[cell_position] = new_cell;
+                }
             }
         }
     }
@@ -956,29 +978,29 @@ impl Figure {
 
 impl rand::Rand for Figure {
     fn rand<R: rand::Rng>(rng: &mut R) -> Self {
-        match rng.next_u32() % 14 {
-            0 => Figure::Cube,
-            1 => Figure::LineHorizontal,
-            2 => Figure::LineVertical,
+        match rng.next_u32() % 28 {
+            0...3 => Figure::Cube,
+            4...5 => Figure::LineHorizontal,
+            6...7 => Figure::LineVertical,
 
-            3 => Figure::LeftL0,
-            4 => Figure::LeftL90,
-            5 => Figure::LeftL180,
-            6 => Figure::LeftL270,
-            7 => Figure::RightL0,
-            8 => Figure::RightL90,
-            9 => Figure::RightL180,
-            10 => Figure::RightL270,
+            8 => Figure::LeftL0,
+            9 => Figure::LeftL90,
+            10 => Figure::LeftL180,
+            11 => Figure::LeftL270,
+            12 => Figure::RightL0,
+            13 => Figure::RightL90,
+            14 => Figure::RightL180,
+            15 => Figure::RightL270,
 
-            11 => Figure::LeftZigzagHorizontal,
-            12 => Figure::LeftZigzagVertical,
-            13 => Figure::RightZigzagHorizontal,
-            14 => Figure::RightZigzagVertical,
+            16...17 => Figure::LeftZigzagHorizontal,
+            18...19 => Figure::LeftZigzagVertical,
+            20...21 => Figure::RightZigzagHorizontal,
+            22...23 => Figure::RightZigzagVertical,
 
-            15 => Figure::Pyramid0,
-            16 => Figure::Pyramid90,
-            17 => Figure::Pyramid180,
-            18 => Figure::Pyramid270,
+            24 => Figure::Pyramid0,
+            25 => Figure::Pyramid90,
+            26 => Figure::Pyramid180,
+            27 => Figure::Pyramid270,
 
             _ => panic!("lolwut"),
         }
