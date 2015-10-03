@@ -6,19 +6,13 @@ extern crate rand;
 use std::cmp::{min, max};
 use std::vec::Vec;
 use std::borrow::Borrow;
-use std::rc::Rc;
-use std::marker::PhantomData;
 use std::sync::atomic;
 
 use sdl2::pixels::Color;
-use sdl2::surface::Surface;
-use sdl2::video::{Window};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::render::Renderer;
 use sdl2_sys::event::SDL_USEREVENT;
-
-use rand::random;
 
 
 const CELL_COUNT_X: usize = 10;
@@ -84,7 +78,6 @@ impl <C: CellScreen> CellScreenRenderer for C {
 
         let cell_size = self.cell_size();
         let cell_spacing = self.cell_spacing();
-        let window_size = self.window_size();
 
         renderer.set_draw_color(Color::RGB(0, 0, 0));
         renderer.clear();
@@ -205,7 +198,6 @@ impl CellScreen for SimpleCellScreen {
 
 enum GameInputEvent {
     RotateClockwise,
-    RotateCounterClockwise,
     MoveLeft,
     MoveRight,
     MoveDown,
@@ -252,11 +244,6 @@ fn timer_event() -> Event {
         timestamp: 0,
         type_: SDL_USEREVENT,
     }
-}
-
-
-fn is_timer_event(event: &Event) -> bool {
-    if let &Event::User {code: 0, ..} = event { true } else { false }
 }
 
 
@@ -434,7 +421,6 @@ impl CellScreen for TetrisCellScreen {
 
 struct TetrisGame<Random: rand::Rng> {
     cell_screen: TetrisCellScreen,
-    dim: Dimensions,
     main_layer: [Option<TetrisCellColor>; CELL_COUNT_X * CELL_COUNT_Y],
     video: sdl2::VideoSubsystem,
     timer: sdl2::TimerSubsystem,
@@ -506,7 +492,6 @@ impl <Random: rand::Rng> TetrisGame<Random> {
     fn new(sdl: &sdl2::Sdl, rng: Random) -> Self {
         let mut game = TetrisGame {
             cell_screen: TetrisCellScreen::new(),
-            dim: Dimensions(CELL_COUNT_X, CELL_COUNT_Y),
             main_layer: [None; CELL_COUNT_X * CELL_COUNT_Y],
             video: sdl.video().unwrap(),
             timer: sdl.timer().unwrap(),
@@ -564,7 +549,6 @@ impl <Random: rand::Rng> TetrisGame<Random> {
                 }
                 false
             },
-            _ => false,
         };
 
         if recreate_figure {
