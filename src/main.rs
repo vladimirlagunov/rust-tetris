@@ -1,19 +1,17 @@
+extern crate argparse;
+extern crate rand;
 extern crate sdl2;
 extern crate sdl2_sys;
-extern crate rand;
 extern crate time;
 
 
+use std::borrow::Borrow;
 use std::cmp::{min, max};
 use std::vec::Vec;
 
-use sdl2::pixels::Color;
 use sdl2::keyboard::Scancode;
+use sdl2::pixels::Color;
 use sdl2::render::Renderer;
-
-
-const CELL_COUNT_X: usize = 10;
-const CELL_COUNT_Y: usize = 16;
 
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -144,18 +142,20 @@ trait Game {
 
 
 struct TetrisCellScreen {
-    cells: [Option<TetrisCellColor>; CELL_COUNT_X * CELL_COUNT_Y],
+    cells: Vec<Option<TetrisCellColor>>,
     dim: Dimensions,
+    _cell_size: usize,
     _figure: Option<(Point, TetrisCellColor, Figure)>,
     _figure_layer: Vec<Option<TetrisCellColor>>,
 }
 
 
 impl TetrisCellScreen {
-    fn new() -> Self {
+    fn new(columns: usize, lines: usize, cell_size: usize) -> Self {
         TetrisCellScreen {
-            cells: [None; CELL_COUNT_X * CELL_COUNT_Y],
-            dim: Dimensions(CELL_COUNT_X, CELL_COUNT_Y),
+            cells: std::iter::repeat(None).take(columns * lines).collect(),
+            dim: Dimensions(columns, lines),
+            _cell_size: cell_size,
             _figure: None,
             _figure_layer: Vec::new(),
         }
@@ -215,17 +215,18 @@ impl CellScreen for TetrisCellScreen {
             layers.push((
                 point.clone(),
                 figure.dimensions(),
-                &self._figure_layer));
+                self._figure_layer.borrow()));
         }
         layers
     }
 
     fn cell_size(&self) -> Dimensions {
-        Dimensions(40, 40)
+        Dimensions(self._cell_size, self._cell_size)
     }
 
     fn cell_spacing(&self) -> Dimensions {
-        Dimensions(2, 2)
+        let spacing = max(self._cell_size / 20, 1);
+        Dimensions(spacing, spacing)
     }
 
     fn global_offset(&self) -> Dimensions {
@@ -366,9 +367,9 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
 
 
 impl <Random: rand::Rng> TetrisGame<Random> {
-    fn new(rng: Random) -> Self {
+    fn new(rng: Random, columns: usize, lines: usize, cell_size: usize) -> Self {
         let mut game = TetrisGame {
-            cell_screen: TetrisCellScreen::new(),
+            cell_screen: TetrisCellScreen::new(columns, lines, cell_size),
             rng: rng,
             figures_generated: 0,
         };
@@ -484,7 +485,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
 
     fn _figure_overlaps_cells(&self, new_point: &Point, figure: &Figure) -> bool {
         let figure_bitmap = figure.bitmap();
-        let existing_cells = self.cell_screen.cells;
+        let existing_cells = &self.cell_screen.cells;
         let fig_dim = figure.dimensions();
         let screen_dim = self.cell_screen.dimensions();
 
@@ -868,9 +869,28 @@ impl rand::Rand for Figure {
 
 
 fn main() {
+    let mut columns = 10;
+    let mut lines = 16;
+    let mut cell_size = 40;
+    {
+        let mut parser = argparse::ArgumentParser::new();
+        parser.refer(&mut cell_size)
+            .add_option(&["--cell-size"], argparse::Store, 
+                        "One cell size in pixels");
+        parser.refer(&mut columns)
+            .add_option(&["--columns"], argparse::Store, "");
+        parser.refer(&mut lines)
+            .add_option(&["--lines"], argparse::Store, "");
+        parser.parse_args_or_exit();
+    }
+
+    assert!(columns >= 5);
+    assert!(lines >= 4);
+    assert!(cell_size >= 5);
+
     let sdl_context = sdl2::init().unwrap();
 
-    let mut game = TetrisGame::new(rand::thread_rng());
+    let mut game = TetrisGame::new(rand::thread_rng(), columns, lines, cell_size);
     let window_size = game.window_size();
 
     let window = sdl_context.video().unwrap().window("Tetris", window_size.0, window_size.1).build().unwrap();
