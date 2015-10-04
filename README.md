@@ -3,7 +3,7 @@
 
 Simple Tetris implementation written in Rust. Has no scores, has no animation, just a game.
 
-![Screenshot](http://i.imgur.com/0fXT0eX.png)
+![Screenshot](http://i.imgur.com/CqEWSUG.png)
 
 # Building
 ## Mac OS X with homebrew
