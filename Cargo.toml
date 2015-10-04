@@ -9,3 +9,4 @@ authors = ["Vladimir Lagunov <lagunov.vladimir@gmail.com>"]
 sdl2 = "*"
 sdl2-sys = "*"
 rand = "*"
+time = "*"

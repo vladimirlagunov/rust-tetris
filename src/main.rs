@@ -1,6 +1,7 @@
 extern crate sdl2;
 extern crate sdl2_sys;
 extern crate rand;
+extern crate time;
 
 
 use std::cmp::{min, max};
@@ -9,15 +10,13 @@ use std::borrow::Borrow;
 
 use sdl2::pixels::Color;
 use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
+use sdl2::keyboard::Scancode;
 use sdl2::render::Renderer;
 use sdl2_sys::event::SDL_USEREVENT;
 
 
 const CELL_COUNT_X: usize = 10;
 const CELL_COUNT_Y: usize = 16;
-const INITIAL_PERIOD_MS: u32 = 333;
-const SPEED_UP_AFTER: usize = 100;
 
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -138,23 +137,6 @@ enum GameInputEvent {
     MoveRight,
     MoveDown,
     Timer,
-}
-
-
-impl GameInputEvent {
-    fn from_sdl_event(event: &Event) -> Option<Self> {
-        match event {
-            &Event::User {code: 0, ..} => Some(GameInputEvent::Timer),
-            &Event::KeyDown {keycode: Some(ref keycode), ..} => match keycode {
-                &Keycode::Left => Some(GameInputEvent::MoveLeft),
-                &Keycode::Right => Some(GameInputEvent::MoveRight),
-                &Keycode::Down | &Keycode::Space => Some(GameInputEvent::MoveDown),
-                &Keycode::Up => Some(GameInputEvent::RotateClockwise),
-                _ => None,
-            },
-            _ => None,
-        }
-    }
 }
 
 
@@ -280,69 +262,109 @@ struct TetrisGame<Random: rand::Rng> {
     timer: sdl2::TimerSubsystem,
     event: sdl2::EventSubsystem,
     rng: Random,
-    step: usize,
+    figures_generated: usize,
+}
+
+
+fn precise_time_ms() -> u64 {
+    time::precise_time_ns() / 1_000_000
 }
 
 
 impl <Random: rand::Rng> Game for TetrisGame<Random> {
     fn run(&mut self, event_pump: &mut sdl2::EventPump, renderer: &mut Renderer) {
-        self.cell_screen.render_cell_screen(renderer);
-        renderer.present();
-
-        let mut period = INITIAL_PERIOD_MS;
-        let timer_subsystem = self.timer.clone();
-        let event = self.event.clone();
-        let timer_callback = move || {
-            event.push_event(timer_event()).unwrap();
-            period
-        };
-
-        let timer = std::cell::RefCell::new(
-            Some(timer_subsystem.add_timer(INITIAL_PERIOD_MS, Box::new(timer_callback))));
-
+        let mut is_paused = false;
         let mut running = true;
 
+        const LOOP_PERIOD_MS: u32 = 10;
+        const MOVE_PERIOD_MS: u64 = 100;
+        let mut last_move_time_ms = None;
+
+        let mut auto_move_down_period = 500;
+        let mut last_auto_move_down_ms = None;
+
+        let mut rotate_was_pressed = false;
+        let mut move_down_was_pressed = false;
+
+        const SPEED_UP_AFTER_FIGURE_COUNT: usize = 100;
+        let mut last_speed_up_was_at_figure = 0;
+
         loop {
-            for event in event_pump.poll_iter() {
-                match event {
-                    Event::Quit {..} => return,
-                    Event::KeyDown {keycode: Some(Keycode::Q), ..} => return,
-                    Event::KeyDown {keycode: Some(Keycode::Escape), ..} => return,
+            self.cell_screen.render_cell_screen(renderer);
+            renderer.present();
 
-                    Event::KeyDown {keycode: Some(Keycode::P), ..} => {
-                        let new_timer = if timer.borrow().is_none() {
-                            let event = self.event.clone();
-                            let timer_callback = move || {
-                                event.push_event(timer_event()).unwrap();
-                                period
-                            };
-                            Some(timer_subsystem.add_timer(period, Box::new(timer_callback)))
-                        } else {
-                            None
-                        };
-                        *timer.borrow_mut() = new_timer;
-                    },
+            event_pump.wait_event_timeout(LOOP_PERIOD_MS);
 
-                    event => if running && ! timer.borrow().is_none() {
-                        match GameInputEvent::from_sdl_event(&event) {
-                            Some(event) => {
-                                let (_running, speed_up) = self.handle_event(event, renderer);
-                                running = _running;
-                                if running && speed_up {
-                                    period = period * 3 / 4;
-                                    let event = self.event.clone();
-                                    let timer_callback = move || {
-                                        event.push_event(timer_event()).unwrap();
-                                        period
-                                    };
-                                    let new_timer = Some(timer_subsystem.add_timer(period, Box::new(timer_callback)));
-                                    *timer.borrow_mut() = new_timer;
-                                }
-                            },
-                            None => {},
-                        }
-                    },
+            let keycodes = event_pump.keyboard_state();
+            let current_time_ms = precise_time_ms();
+
+            if keycodes.is_scancode_pressed(Scancode::Q)
+                || keycodes.is_scancode_pressed(Scancode::Escape)
+            { break }
+
+            if ! running { continue }
+
+            if keycodes.is_scancode_pressed(Scancode::P) {
+                is_paused = ! is_paused;
+                last_auto_move_down_ms = Some(current_time_ms);
+            }
+
+            if is_paused { continue }
+
+            let move_left_pressed = keycodes.is_scancode_pressed(Scancode::Left);
+            let move_right_pressed = keycodes.is_scancode_pressed(Scancode::Right);
+            let rotate_pressed = keycodes.is_scancode_pressed(Scancode::Up);
+            let move_down_pressed =
+                keycodes.is_scancode_pressed(Scancode::Down)
+                || keycodes.is_scancode_pressed(Scancode::Space);
+
+            if move_left_pressed || move_right_pressed {
+                if last_move_time_ms.is_none()
+                    || last_move_time_ms.unwrap() + MOVE_PERIOD_MS <= current_time_ms
+                {
+                    let event = if move_left_pressed {
+                        GameInputEvent::MoveLeft
+                    } else {
+                        GameInputEvent::MoveRight
+                    };
+                    running = self.handle_event(event);
+                    last_move_time_ms = Some(current_time_ms)
                 }
+                continue;
+            } else {
+                last_move_time_ms = None;
+            }
+
+            if rotate_pressed {
+                if ! rotate_was_pressed {
+                    self.handle_event(GameInputEvent::RotateClockwise);
+                    rotate_was_pressed = true;
+                    continue;
+                }   
+            } else {
+                rotate_was_pressed = false;
+            }
+
+            if move_down_pressed {
+                if ! move_down_was_pressed {
+                    running = self.handle_event(GameInputEvent::MoveDown);
+                    move_down_was_pressed = true;
+                    continue;
+                }
+            } else {
+                move_down_was_pressed = false;
+            }
+
+            if last_speed_up_was_at_figure + SPEED_UP_AFTER_FIGURE_COUNT <= self.figures_generated {
+                last_speed_up_was_at_figure = self.figures_generated;
+                auto_move_down_period = auto_move_down_period * 3 / 4;
+            }
+
+            if last_auto_move_down_ms.is_none() {
+                last_auto_move_down_ms = Some(current_time_ms);
+            } else if last_auto_move_down_ms.unwrap() + auto_move_down_period <= current_time_ms {
+                running = self.handle_event(GameInputEvent::Timer);
+                last_auto_move_down_ms = Some(current_time_ms);
             }
         }
     }
@@ -361,7 +383,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             timer: sdl.timer().unwrap(),
             event: sdl.event().unwrap(),
             rng: rng,
-            step: 0,
+            figures_generated: 0,
         };
         let can_create_first_figure = game.create_new_figure();
         assert!(can_create_first_figure);
@@ -379,6 +401,8 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             offset.1 as usize,
             );
 
+        self.figures_generated += 1;
+
         if self._figure_overlaps_cells(&point, &figure) {
             false
         } else {
@@ -387,8 +411,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
         }
     }
 
-    fn handle_event(&mut self, event: GameInputEvent, renderer: &mut Renderer) -> (bool, bool) {
-        // returns (running, speed up)
+    fn handle_event(&mut self, event: GameInputEvent) -> bool {
         let recreate_figure: bool = match event {
             GameInputEvent::Timer => {
                 ! self._try_move_figure_down()
@@ -406,7 +429,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
                 true
             },
             GameInputEvent::RotateClockwise => {
-                if self.cell_screen.has_figure() { 
+                if self.cell_screen.has_figure() {
                     self.rotate_clockwise();
                 }
                 false
@@ -415,17 +438,13 @@ impl <Random: rand::Rng> TetrisGame<Random> {
 
         if recreate_figure {
             self.remove_filled_lines();
-            self.step += 1;
 
             if ! self.create_new_figure() {
-                return (false, false);
+                return false;
             }
         }
 
-        self.cell_screen.render_cell_screen(renderer);
-        renderer.present();
-
-        (true, recreate_figure && (self.step > 0) && (self.step % SPEED_UP_AFTER == 0))
+        true
     }
 
     fn move_figure_left(&mut self) {
@@ -456,7 +475,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
         let (point, color, figure) = self.cell_screen.get_figure().unwrap();
             let fig_dim = figure.dimensions();
 
-        let can_go_down = 
+        let can_go_down =
             (point.1 + figure.dimensions().1) < self.cell_screen.dimensions().1
             && ! self._figure_overlaps_cells(&Point(point.0, point.1 + 1), &figure);
 
@@ -545,7 +564,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
                     offset += dim.0;
                 }
             }
-           
+
             for _ in 0 .. dim.0 {
                 cell_position -= 1;
                 if offset != 0 {
