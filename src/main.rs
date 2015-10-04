@@ -6,13 +6,10 @@ extern crate time;
 
 use std::cmp::{min, max};
 use std::vec::Vec;
-use std::borrow::Borrow;
 
 use sdl2::pixels::Color;
-use sdl2::event::Event;
 use sdl2::keyboard::Scancode;
 use sdl2::render::Renderer;
-use sdl2_sys::event::SDL_USEREVENT;
 
 
 const CELL_COUNT_X: usize = 10;
@@ -146,16 +143,6 @@ trait Game {
 }
 
 
-fn timer_event() -> Event {
-    Event::User {
-        code: 0,
-        window_id: 0,
-        timestamp: 0,
-        type_: SDL_USEREVENT,
-    }
-}
-
-
 struct TetrisCellScreen {
     cells: [Option<TetrisCellColor>; CELL_COUNT_X * CELL_COUNT_Y],
     dim: Dimensions,
@@ -259,8 +246,6 @@ impl CellScreen for TetrisCellScreen {
 
 struct TetrisGame<Random: rand::Rng> {
     cell_screen: TetrisCellScreen,
-    timer: sdl2::TimerSubsystem,
-    event: sdl2::EventSubsystem,
     rng: Random,
     figures_generated: usize,
 }
@@ -381,11 +366,9 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
 
 
 impl <Random: rand::Rng> TetrisGame<Random> {
-    fn new(sdl: &sdl2::Sdl, rng: Random) -> Self {
+    fn new(rng: Random) -> Self {
         let mut game = TetrisGame {
             cell_screen: TetrisCellScreen::new(),
-            timer: sdl.timer().unwrap(),
-            event: sdl.event().unwrap(),
             rng: rng,
             figures_generated: 0,
         };
@@ -887,7 +870,7 @@ impl rand::Rand for Figure {
 fn main() {
     let sdl_context = sdl2::init().unwrap();
 
-    let mut game = TetrisGame::new(&sdl_context, rand::thread_rng());
+    let mut game = TetrisGame::new(rand::thread_rng());
     let window_size = game.window_size();
 
     let window = sdl_context.video().unwrap().window("Tetris", window_size.0, window_size.1).build().unwrap();
