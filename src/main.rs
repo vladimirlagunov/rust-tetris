@@ -275,9 +275,10 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
     fn run(&mut self, event_pump: &mut sdl2::EventPump, renderer: &mut Renderer) {
         let mut is_paused = false;
         let mut running = true;
+        let mut pause_was_pressed = false;
 
         const LOOP_PERIOD_MS: u32 = 10;
-        const MOVE_PERIOD_MS: u64 = 100;
+        const MOVE_PERIOD_MS: u64 = 120;
         let mut last_move_time_ms = None;
 
         let mut auto_move_down_period = 500;
@@ -305,8 +306,12 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
             if ! running { continue }
 
             if keycodes.is_scancode_pressed(Scancode::P) {
-                is_paused = ! is_paused;
-                last_auto_move_down_ms = Some(current_time_ms);
+                if ! pause_was_pressed {
+                    is_paused = ! is_paused;
+                    pause_was_pressed = true;
+                }
+            } else {
+                pause_was_pressed = false;
             }
 
             if is_paused { continue }
@@ -318,6 +323,8 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
                 keycodes.is_scancode_pressed(Scancode::Down)
                 || keycodes.is_scancode_pressed(Scancode::Space);
 
+            drop(keycodes);
+
             if move_left_pressed || move_right_pressed {
                 if last_move_time_ms.is_none()
                     || last_move_time_ms.unwrap() + MOVE_PERIOD_MS <= current_time_ms
@@ -328,9 +335,8 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
                         GameInputEvent::MoveRight
                     };
                     running = self.handle_event(event);
-                    last_move_time_ms = Some(current_time_ms)
+                    last_move_time_ms = Some(precise_time_ms())
                 }
-                continue;
             } else {
                 last_move_time_ms = None;
             }
@@ -339,7 +345,6 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
                 if ! rotate_was_pressed {
                     self.handle_event(GameInputEvent::RotateClockwise);
                     rotate_was_pressed = true;
-                    continue;
                 }   
             } else {
                 rotate_was_pressed = false;
@@ -349,7 +354,6 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
                 if ! move_down_was_pressed {
                     running = self.handle_event(GameInputEvent::MoveDown);
                     move_down_was_pressed = true;
-                    continue;
                 }
             } else {
                 move_down_was_pressed = false;
