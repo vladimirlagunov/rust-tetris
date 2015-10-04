@@ -1,7 +1,10 @@
 language: rust
+sudo: false
 rust:
   - 1.2.0
-before_install:
-  - sudo add-apt-repository ppa:team-xbmc/ppa   # contains libsdl2 for precise
-  - sudo apt-get update -qq
-  - sudo apt-get install -y libsdl2-dev
+addons:
+  apt:
+    sources:
+      - ppa:team-xbmc/ppa  # contains libsdl2 for precise
+    packages:
+      - libsdl2-dev
