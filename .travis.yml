@@ -4,7 +4,5 @@ rust:
   - 1.2.0
 addons:
   apt:
-    sources:
-      - ppa:zoogie/sdl2-snapshots  # contains libsdl2 for precise
     packages:
-      - libsdl2-dev
+      - libsdl2-2.0-dev
