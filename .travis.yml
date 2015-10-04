@@ -5,6 +5,6 @@ rust:
 addons:
   apt:
     sources:
-      - ppa:team-xbmc/ppa  # contains libsdl2 for precise
+      - ppa:zoogie/sdl2-snapshots  # contains libsdl2 for precise
     packages:
       - libsdl2-dev
