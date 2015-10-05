@@ -131,7 +131,6 @@ enum GameInputEvent {
     RotateClockwise,
     MoveLeft,
     MoveRight,
-    MoveDown,
     Timer,
 }
 
@@ -272,28 +271,36 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
         const SPEED_UP_AFTER_FIGURE_COUNT: usize = 100;
         let mut last_speed_up_was_at_figure = 0;
 
+        const FAST_MOVE_DOWN_MS: u64 = 15;
+        let mut figure_when_move_down_pressed = None;
+
         let mut move_left_pressed = false;
         let mut move_right_pressed = false;
+        let mut move_down_pressed = false;
 
         'game_loop: loop {
             self.cell_screen.render_cell_screen(renderer);
             renderer.present();
 
             let mut rotate_pressed = false;
-            let mut move_down_pressed = false;
 
-            let wait_timeout = if is_paused || ! running {
+            let wait_timeout: u32 = if is_paused || ! running {
                 1000
             } else {
                 let current_time_ms = precise_time_ms();
-                min(
+                let result = min(
                     max(1, auto_move_down_period as i32
                         + last_auto_move_down_ms as i32
                         - current_time_ms as i32),
                     max(1, MOVE_PERIOD_MS as i32
                         + last_move_time_ms as i32
                         - current_time_ms as i32)
-                        ) as u32
+                        ) as u32;
+                if move_down_pressed {
+                    min(FAST_MOVE_DOWN_MS as u32, result)
+                } else {
+                    result
+                }
             };
 
             match event_pump.wait_event_timeout(wait_timeout) {
@@ -309,6 +316,7 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
                 Some(Event::KeyUp {keycode: Some(kc), ..}) => match kc {
                     Keycode::Left => move_left_pressed = false,
                     Keycode::Right => move_right_pressed = false,
+                    Keycode::Down | Keycode::Space => move_down_pressed = false,
                     _ => {},
                 },
                 _ => {},
@@ -337,16 +345,28 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
                 self.handle_event(GameInputEvent::RotateClockwise);
             }
 
-            if move_down_pressed {
-                running = self.handle_event(GameInputEvent::MoveDown);
-            }
-
             if last_speed_up_was_at_figure + SPEED_UP_AFTER_FIGURE_COUNT <= self.figures_generated {
                 last_speed_up_was_at_figure = self.figures_generated;
-                auto_move_down_period = auto_move_down_period * 3 / 4;
+                auto_move_down_period = max(auto_move_down_period * 3 / 4, FAST_MOVE_DOWN_MS);
             }
 
-            if last_auto_move_down_ms + auto_move_down_period <= current_time_ms {
+            let period = if move_down_pressed {
+                match figure_when_move_down_pressed {
+                    None => {
+                        figure_when_move_down_pressed = Some(self.figures_generated);
+                        FAST_MOVE_DOWN_MS
+                    },
+                    Some(x) if x == self.figures_generated => {
+                        FAST_MOVE_DOWN_MS
+                    },
+                    _ => auto_move_down_period,
+                }
+            } else {
+                figure_when_move_down_pressed = None;
+                auto_move_down_period
+            };
+
+            if last_auto_move_down_ms + period <= current_time_ms {
                 running = self.handle_event(GameInputEvent::Timer);
                 last_auto_move_down_ms = current_time_ms;
             }
@@ -396,7 +416,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
     fn handle_event(&mut self, event: GameInputEvent) -> bool {
         let recreate_figure: bool = match event {
             GameInputEvent::Timer => {
-                ! self._try_move_figure_down()
+                ! self.try_move_figure_down()
             },
             GameInputEvent::MoveLeft => {
                 if self.cell_screen.has_figure() { self.move_figure_left() }
@@ -405,10 +425,6 @@ impl <Random: rand::Rng> TetrisGame<Random> {
             GameInputEvent::MoveRight => {
                 if self.cell_screen.has_figure() { self.move_figure_right() }
                 false
-            },
-            GameInputEvent::MoveDown => {
-                if self.cell_screen.has_figure() { self.move_figure_down() }
-                true
             },
             GameInputEvent::RotateClockwise => {
                 if self.cell_screen.has_figure() {
@@ -449,11 +465,7 @@ impl <Random: rand::Rng> TetrisGame<Random> {
         }
     }
 
-    fn move_figure_down(&mut self) {
-        while self._try_move_figure_down() {}
-    }
-
-    fn _try_move_figure_down(&mut self) -> bool {
+    fn try_move_figure_down(&mut self) -> bool {
         let (point, color, figure) = self.cell_screen.get_figure().unwrap();
             let fig_dim = figure.dimensions();
 
