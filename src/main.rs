@@ -262,7 +262,7 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
         let mut is_paused = false;
         let mut running = true;
 
-        const MOVE_PERIOD_MS: u64 = 100;
+        const MOVE_PERIOD_MS: u64 = 120;
         let mut last_move_time_ms: u64 = 0;
 
         let mut auto_move_down_period = 500;
@@ -517,14 +517,13 @@ impl <Random: rand::Rng> TetrisGame<Random> {
         let dim = self.cell_screen.dimensions();
         let fig_dim = rotated_figure.dimensions();
 
-        let new_x = min(new_x, dim.0 - fig_dim.0);
-        let new_y = min(new_y, dim.1 - fig_dim.1);
-
-        self.cell_screen.set_figure(
-            Point(new_x, new_y),
-            color,
-            rotated_figure,
-            );
+        let new_point = Point(
+            min(new_x, dim.0 - fig_dim.0),
+            min(new_y, dim.1 - fig_dim.1));
+        
+        if ! self._figure_overlaps_cells(&new_point, &rotated_figure) {
+            self.cell_screen.set_figure(new_point, color, rotated_figure);
+        }
     }
 
     fn remove_filled_lines(&mut self) {
