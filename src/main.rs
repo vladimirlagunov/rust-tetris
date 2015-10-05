@@ -9,9 +9,10 @@ use std::borrow::Borrow;
 use std::cmp::{min, max};
 use std::vec::Vec;
 
-use sdl2::keyboard::Scancode;
+use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::Renderer;
+use sdl2::event::Event;
 
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -261,55 +262,50 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
     fn run(&mut self, event_pump: &mut sdl2::EventPump, renderer: &mut Renderer) {
         let mut is_paused = false;
         let mut running = true;
-        let mut pause_was_pressed = false;
 
-        const LOOP_PERIOD_MS: u32 = 10;
         const MOVE_PERIOD_MS: u64 = 120;
         let mut last_move_time_ms = None;
 
         let mut auto_move_down_period = 500;
         let mut last_auto_move_down_ms = None;
 
-        let mut rotate_was_pressed = false;
-        let mut move_down_was_pressed = false;
-
         const SPEED_UP_AFTER_FIGURE_COUNT: usize = 100;
         let mut last_speed_up_was_at_figure = 0;
 
-        loop {
+        let mut move_left_pressed = false;
+        let mut move_right_pressed = false;
+
+        'game_loop: loop {
             self.cell_screen.render_cell_screen(renderer);
             renderer.present();
 
-            event_pump.wait_event_timeout(LOOP_PERIOD_MS);
-
-            let keycodes = event_pump.keyboard_state();
-            let current_time_ms = precise_time_ms();
-
-            if keycodes.is_scancode_pressed(Scancode::Q)
-                || keycodes.is_scancode_pressed(Scancode::Escape)
-            { break }
-
-            if ! running { continue }
-
-            if keycodes.is_scancode_pressed(Scancode::P) {
-                if ! pause_was_pressed {
-                    is_paused = ! is_paused;
-                    pause_was_pressed = true;
-                }
-            } else {
-                pause_was_pressed = false;
+            let mut rotate_pressed = false;
+            let mut move_down_pressed = false;
+ 
+            for event in event_pump.poll_iter() {
+                match event {
+                    Event::KeyDown {keycode: Some(kc), repeat: false, ..} => match kc {
+                        Keycode::Q | Keycode::Escape => { break 'game_loop },
+                        Keycode::P => is_paused = ! is_paused,
+                        Keycode::Left => move_left_pressed = true,
+                        Keycode::Right => move_right_pressed = true,
+                        Keycode::Up => rotate_pressed = true,
+                        Keycode::Down | Keycode::Space => move_down_pressed = true,
+                        _ => {},
+                    },
+                    Event::KeyUp {keycode: Some(kc), ..} => match kc {
+                        Keycode::Left => move_left_pressed = false,
+                        Keycode::Right => move_right_pressed = false,
+                        _ => {},
+                    },
+                    _ => {},
+                };
             }
 
+            let current_time_ms = precise_time_ms();
+
+            if ! running { continue }
             if is_paused { continue }
-
-            let move_left_pressed = keycodes.is_scancode_pressed(Scancode::Left);
-            let move_right_pressed = keycodes.is_scancode_pressed(Scancode::Right);
-            let rotate_pressed = keycodes.is_scancode_pressed(Scancode::Up);
-            let move_down_pressed =
-                keycodes.is_scancode_pressed(Scancode::Down)
-                || keycodes.is_scancode_pressed(Scancode::Space);
-
-            drop(keycodes);
 
             if move_left_pressed || move_right_pressed {
                 if last_move_time_ms.is_none()
@@ -328,21 +324,11 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
             }
 
             if rotate_pressed {
-                if ! rotate_was_pressed {
-                    self.handle_event(GameInputEvent::RotateClockwise);
-                    rotate_was_pressed = true;
-                }   
-            } else {
-                rotate_was_pressed = false;
+                self.handle_event(GameInputEvent::RotateClockwise);
             }
 
             if move_down_pressed {
-                if ! move_down_was_pressed {
-                    running = self.handle_event(GameInputEvent::MoveDown);
-                    move_down_was_pressed = true;
-                }
-            } else {
-                move_down_was_pressed = false;
+                running = self.handle_event(GameInputEvent::MoveDown);
             }
 
             if last_speed_up_was_at_figure + SPEED_UP_AFTER_FIGURE_COUNT <= self.figures_generated {
