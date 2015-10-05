@@ -263,11 +263,11 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
         let mut is_paused = false;
         let mut running = true;
 
-        const MOVE_PERIOD_MS: u64 = 120;
-        let mut last_move_time_ms = None;
+        const MOVE_PERIOD_MS: u64 = 100;
+        let mut last_move_time_ms: u64 = 0;
 
         let mut auto_move_down_period = 500;
-        let mut last_auto_move_down_ms = None;
+        let mut last_auto_move_down_ms: u64 = precise_time_ms();
 
         const SPEED_UP_AFTER_FIGURE_COUNT: usize = 100;
         let mut last_speed_up_was_at_figure = 0;
@@ -281,46 +281,56 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
 
             let mut rotate_pressed = false;
             let mut move_down_pressed = false;
- 
-            for event in event_pump.poll_iter() {
-                match event {
-                    Event::KeyDown {keycode: Some(kc), repeat: false, ..} => match kc {
-                        Keycode::Q | Keycode::Escape => { break 'game_loop },
-                        Keycode::P => is_paused = ! is_paused,
-                        Keycode::Left => move_left_pressed = true,
-                        Keycode::Right => move_right_pressed = true,
-                        Keycode::Up => rotate_pressed = true,
-                        Keycode::Down | Keycode::Space => move_down_pressed = true,
-                        _ => {},
-                    },
-                    Event::KeyUp {keycode: Some(kc), ..} => match kc {
-                        Keycode::Left => move_left_pressed = false,
-                        Keycode::Right => move_right_pressed = false,
-                        _ => {},
-                    },
+
+            let wait_timeout = if is_paused || ! running {
+                1000
+            } else {
+                let current_time_ms = precise_time_ms();
+                min(
+                    max(1, auto_move_down_period as i32
+                        + last_auto_move_down_ms as i32
+                        - current_time_ms as i32),
+                    max(1, MOVE_PERIOD_MS as i32
+                        + last_move_time_ms as i32
+                        - current_time_ms as i32)
+                        ) as u32
+            };
+
+            match event_pump.wait_event_timeout(wait_timeout) {
+                Some(Event::KeyDown {keycode: Some(kc), repeat: false, ..}) => match kc {
+                    Keycode::Q | Keycode::Escape => { break 'game_loop },
+                    Keycode::P => is_paused = ! is_paused,
+                    Keycode::Left => move_left_pressed = true,
+                    Keycode::Right => move_right_pressed = true,
+                    Keycode::Up => rotate_pressed = true,
+                    Keycode::Down | Keycode::Space => move_down_pressed = true,
                     _ => {},
-                };
+                },
+                Some(Event::KeyUp {keycode: Some(kc), ..}) => match kc {
+                    Keycode::Left => move_left_pressed = false,
+                    Keycode::Right => move_right_pressed = false,
+                    _ => {},
+                },
+                _ => {},
             }
 
-            let current_time_ms = precise_time_ms();
 
             if ! running { continue }
             if is_paused { continue }
 
+            let current_time_ms = precise_time_ms();
             if move_left_pressed || move_right_pressed {
-                if last_move_time_ms.is_none()
-                    || last_move_time_ms.unwrap() + MOVE_PERIOD_MS <= current_time_ms
-                {
+                if last_move_time_ms + MOVE_PERIOD_MS <= current_time_ms {
                     let event = if move_left_pressed {
                         GameInputEvent::MoveLeft
                     } else {
                         GameInputEvent::MoveRight
                     };
                     running = self.handle_event(event);
-                    last_move_time_ms = Some(precise_time_ms())
+                    last_move_time_ms = current_time_ms;
                 }
             } else {
-                last_move_time_ms = None;
+                last_move_time_ms = 0;
             }
 
             if rotate_pressed {
@@ -336,11 +346,9 @@ impl <Random: rand::Rng> Game for TetrisGame<Random> {
                 auto_move_down_period = auto_move_down_period * 3 / 4;
             }
 
-            if last_auto_move_down_ms.is_none() {
-                last_auto_move_down_ms = Some(current_time_ms);
-            } else if last_auto_move_down_ms.unwrap() + auto_move_down_period <= current_time_ms {
+            if last_auto_move_down_ms + auto_move_down_period <= current_time_ms {
                 running = self.handle_event(GameInputEvent::Timer);
-                last_auto_move_down_ms = Some(current_time_ms);
+                last_auto_move_down_ms = current_time_ms;
             }
         }
     }
@@ -861,7 +869,7 @@ fn main() {
     {
         let mut parser = argparse::ArgumentParser::new();
         parser.refer(&mut cell_size)
-            .add_option(&["--cell-size"], argparse::Store, 
+            .add_option(&["--cell-size"], argparse::Store,
                         "One cell size in pixels");
         parser.refer(&mut columns)
             .add_option(&["--columns"], argparse::Store, "");
